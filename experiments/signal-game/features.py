@@ -1,8 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-
-# This source code is licensed under the MIT license found in the
-# LICENSE file in the root directory of this source tree.
-
 import pickle
 import torch.utils.data as data
 import torch.nn.parallel
@@ -12,21 +7,15 @@ import numpy as np
 
 
 class _BatchIterator:
-    def __init__(self, loader, n_batches, seed=None):
+    def __init__(self, loader, seed=None):
         self.loader = loader
-        self.n_batches = n_batches
-        self.batches_generated = 0
         self.random_state = np.random.RandomState(seed)
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        if self.batches_generated > self.n_batches:
-            raise StopIteration()
-
         batch_data = self.get_batch()
-        self.batches_generated += 1
         return batch_data
 
     def get_batch(self):
@@ -73,14 +62,13 @@ class _BatchIterator:
             images_vectors_receiver[:, i,
                                     :] = images_vectors_sender[permutation, i, :]
             y[i] = permutation.argmin()
-        return images_vectors_sender, y, images_vectors_receiver
+        return images_vectors_sender, images_vectors_receiver, y
 
 
 class ImagenetLoader(torch.utils.data.DataLoader):
     def __init__(self, *args, **kwargs):
         self.opt = kwargs.pop('opt')
         self.seed = kwargs.pop('seed')
-        self.batches_per_epoch = kwargs.pop('batches_per_epoch')
 
         super(ImagenetLoader, self).__init__(*args, **kwargs)
 
@@ -89,7 +77,7 @@ class ImagenetLoader(torch.utils.data.DataLoader):
             seed = np.random.randint(0, 2 ** 32)
         else:
             seed = self.seed
-        return _BatchIterator(self, n_batches=self.batches_per_epoch, seed=seed)
+        return _BatchIterator(self, seed=seed)
 
 
 class ImageNetFeat(data.Dataset):
