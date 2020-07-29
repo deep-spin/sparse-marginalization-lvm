@@ -6,18 +6,10 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 
-from lvmwrappers.explicit_wrappers import (
-    ExplicitWrapper,
-    ExplicitDeterministicWrapper,
-    SymbolGameExplicit)
-from lvmwrappers.reinforce_wrappers import (
-    ReinforceWrapper,
-    ReinforceDeterministicWrapper,
-    SymbolGameReinforce)
-from lvmwrappers.gumbel_wrappers import (
-    GumbelSoftmaxWrapper,
-    SymbolGameGS)
-from lvmwrappers.callbacks import TemperatureUpdater
+from lvmwrappers.explicit_wrappers import ExplicitWrapper
+from lvmwrappers.reinforce_wrappers import ReinforceWrapper, ReinforceDeterministicWrapper
+from lvmwrappers.gumbel_wrappers import GumbelSoftmaxWrapper
+# from lvmwrappers.callbacks import TemperatureUpdater
 
 from features import ImageNetFeat, ImagenetLoader
 from archs import Sender, Receiver
@@ -42,43 +34,7 @@ class SignalGame(pl.LightningModule):
         self.opts = opts
 
     def forward(self, sender_input, receiver_input, labels):
-        message, sender_log_prob, sender_entropy = \
-            self.sender(sender_input)
-        receiver_output, receiver_log_prob, receiver_entropy = \
-            self.receiver(message, receiver_input)
-
-        loss, logs = self.loss(
-            sender_input,
-            message,
-            receiver_input,
-            receiver_output,
-            labels)
-        policy_loss = (
-            (loss.detach() - self.mean_baseline) *
-            (sender_log_prob + receiver_log_prob)).mean()
-        entropy_loss = -(
-            sender_entropy.mean() *
-            self.sender_entropy_coeff +
-            receiver_entropy.mean() *
-            self.receiver_entropy_coeff)
-
-        if self.training:
-            self.n_points += 1.0
-            self.mean_baseline += (loss.detach().mean().item() -
-                                   self.mean_baseline) / self.n_points
-
-        full_loss = policy_loss + entropy_loss + loss.mean()
-
-        for k, v in logs.items():
-            if hasattr(v, 'mean'):
-                logs[k] = v.mean()
-
-        logs['baseline'] = self.mean_baseline
-        logs['loss'] = loss.mean()
-        logs['sender_entropy'] = sender_entropy.mean()
-        logs['receiver_entropy'] = receiver_entropy.mean()
-
-        return {'loss': full_loss, 'log': logs}
+        pass
 
     def _step(self, batch):
 
@@ -209,6 +165,7 @@ class SignalGame(pl.LightningModule):
             seed=self.opts.random_seed)
 
     def val_dataloader(self):
+        # TODO: use specific indexes
         # fixed seed so it's always the same 1024 (32*32) pairs
         data_folder = os.path.join(self.opts.root, "train/")
         dataset = ImageNetFeat(root=data_folder)
@@ -218,6 +175,7 @@ class SignalGame(pl.LightningModule):
             seed=20200724)
 
     def test_dataloader(self):
+        # TODO: use specific indexes
         # fixed seed so it's always the same 1024 (32*32) pairs
         data_folder = os.path.join(self.opts.root, "train/")
         dataset = ImageNetFeat(root=data_folder)
@@ -227,10 +185,151 @@ class SignalGame(pl.LightningModule):
             seed=20200725)
 
 
+class ReinforceSignalGame(SignalGame):
+    def forward(self, sender_input, receiver_input, labels):
+        message, sender_log_prob, sender_entropy = \
+            self.sender(sender_input)
+        receiver_output, receiver_log_prob, receiver_entropy = \
+            self.receiver(message, receiver_input)
+
+        loss, logs = self.loss(
+            sender_input,
+            message,
+            receiver_input,
+            receiver_output,
+            labels)
+        policy_loss = (
+            (loss.detach() - self.mean_baseline) *
+            (sender_log_prob + receiver_log_prob)).mean()
+        entropy_loss = -(
+            sender_entropy.mean() *
+            self.sender_entropy_coeff +
+            receiver_entropy.mean() *
+            self.receiver_entropy_coeff)
+
+        if self.training:
+            self.n_points += 1.0
+            self.mean_baseline += (loss.detach().mean().item() -
+                                   self.mean_baseline) / self.n_points
+
+        full_loss = policy_loss + entropy_loss + loss.mean()
+
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = v.mean()
+
+        logs['baseline'] = self.mean_baseline
+        logs['loss'] = loss.mean()
+        logs['sender_entropy'] = sender_entropy.mean()
+        logs['receiver_entropy'] = receiver_entropy.mean()
+
+        return {'loss': full_loss, 'log': logs}
+
+
+class GSSignalGame(SignalGame):
+    def forward(self, sender_input, receiver_input, labels):
+        message = self.sender(sender_input)
+        receiver_output = self.receiver(message, receiver_input)
+
+        loss, logs = self.loss(
+            sender_input,
+            message,
+            receiver_input,
+            receiver_output,
+            labels)
+
+        full_loss = loss.mean()
+
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = v.mean()
+
+        logs['baseline'] = torch.zeros(1).to(loss.device)
+        logs['loss'] = loss.mean()
+        logs['sender_entropy'] = torch.zeros(1).to(loss.device)
+        logs['receiver_entropy'] = torch.zeros(1).to(loss.device)
+
+        return {'loss': full_loss, 'log': logs}
+
+
+class ExplicitSignalGame(SignalGame):
+    def forward(self, sender_input, receiver_input, labels):
+        message, sender_probs, sender_entropy = self.sender(sender_input)
+        batch_size, vocab_size = sender_probs.shape
+
+        entropy_loss = -(sender_entropy.mean() * self.sender_entropy_coeff)
+        if self.training:
+            losses = torch.zeros_like(sender_probs)
+            logs_global = None
+
+            for possible_message in range(vocab_size):
+                if sender_probs[:, possible_message].sum().item() != 0:
+                    # if it's zero, all batch examples will be multiplied by zero anyway,
+                    # so skip computations
+                    possible_message_ = \
+                        possible_message + \
+                        torch.zeros(batch_size, dtype=torch.long).to(sender_probs.device)
+                    receiver_output = self.receiver(possible_message_, receiver_input)
+
+                    loss_sum_term, logs = self.loss(
+                        sender_input,
+                        message,
+                        receiver_input,
+                        receiver_output,
+                        labels)
+
+                    losses[:, possible_message] += loss_sum_term
+
+                    if not logs_global:
+                        logs_global = {k: 0.0 for k in logs.keys()}
+                    for k, v in logs.items():
+                        if hasattr(v, 'mean'):
+                            # expectation of accuracy
+                            logs_global[k] += (
+                                sender_probs[:, possible_message] * v).mean()
+
+            for k, v in logs.items():
+                if hasattr(v, 'mean'):
+                    logs[k] = logs_global[k]
+
+            # sender_probs: [batch_size, vocab_size]
+            # losses: [batch_size, vocab_size]
+            # sender_probs.unsqueeze(1): [batch_size, 1, vocab_size]
+            # losses.unsqueeze(-1): [batch_size, vocab_size, 1]
+            # entropy_loss: []
+            # full_loss: []
+            loss = sender_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
+            full_loss = loss.mean() + entropy_loss
+
+        else:
+            receiver_output = self.receiver(message, receiver_input)
+            loss, logs = self.loss(
+                sender_input,
+                message,
+                receiver_input,
+                receiver_output,
+                labels)
+
+            full_loss = loss.mean() + entropy_loss
+
+            for k, v in logs.items():
+                if hasattr(v, 'mean'):
+                    logs[k] = v.mean()
+
+        logs['baseline'] = torch.zeros(1).to(loss.device)
+        logs['loss'] = loss.mean()
+        logs['sender_entropy'] = sender_entropy.mean()
+        logs['receiver_entropy'] = torch.zeros(1).to(loss.device)
+        # TODO: nonzero for every epoch end
+        logs['nonzeros'] = (sender_probs != 0).sum(-1).to(torch.float).mean()
+        return {'loss': full_loss, 'log': logs}
+
+
 def loss_acc(_sender_input, _message, _receiver_input, receiver_output, labels):
     """
     Accuracy loss - non-differetiable hence cannot be used with GS
     """
+    # receiver outputs are samples
     acc = (labels == receiver_output).float()
     return -acc, {'acc': acc}
 
@@ -240,6 +339,7 @@ def loss_nll(_sender_input, _message, _receiver_input, receiver_output, labels):
     NLL loss - differentiable and can be used with both GS and Reinforce
     """
     nll = F.nll_loss(receiver_output, labels, reduction="none")
+    # receiver outputs are logits
     acc = (labels == receiver_output.argmax(dim=1)).float()
     return nll, {'acc': acc}
 
@@ -270,18 +370,21 @@ def get_game(opt):
         else:
             loss = loss_nll
             receiver = ReinforceDeterministicWrapper(receiver)
-        game = SignalGame(
+        game = ReinforceSignalGame(
             sender, receiver, loss, opt,
             sender_entropy_coeff=opt.entropy_coeff,
             receiver_entropy_coeff=opt.entropy_coeff)
     elif opt.mode == 'gs':
-        sender = GumbelSoftmaxWrapper(sender, temperature=opt.gs_tau)
-        game = SymbolGameGS(sender, receiver, loss_nll)
+        sender = GumbelSoftmaxWrapper(
+            sender,
+            temperature=opt.gs_tau,
+            trainable_temperature=False,
+            straight_through=False)
+        game = GSSignalGame(sender, receiver, loss_nll, opt)
     elif opt.mode == 'explicit':
         sender = ExplicitWrapper(sender, normalizer=opt.normalizer)
-        receiver = ExplicitDeterministicWrapper(receiver)
-        game = SymbolGameExplicit(
-            sender, receiver, loss_nll,
+        game = ExplicitSignalGame(
+            sender, receiver, loss_nll, opt,
             sender_entropy_coeff=opt.entropy_coeff)
     else:
         raise RuntimeError(f"Unknown training mode: {opt.mode}")
