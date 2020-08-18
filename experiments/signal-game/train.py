@@ -7,7 +7,8 @@ import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 
 from lvmwrappers.explicit_wrappers import ExplicitWrapper
-from lvmwrappers.reinforce_wrappers import ReinforceWrapper, ReinforceDeterministicWrapper
+from lvmwrappers.reinforce_wrappers import \
+    ReinforceWrapper, ReinforceDeterministicWrapper
 from lvmwrappers.gumbel_wrappers import GumbelSoftmaxWrapper
 # from lvmwrappers.callbacks import TemperatureUpdater
 
@@ -264,12 +265,15 @@ class ExplicitSignalGame(SignalGame):
 
             for possible_message in range(vocab_size):
                 if sender_probs[:, possible_message].sum().item() != 0:
-                    # if it's zero, all batch examples will be multiplied by zero anyway,
+                    # if it's zero, all batch examples
+                    # will be multiplied by zero anyway,
                     # so skip computations
                     possible_message_ = \
                         possible_message + \
-                        torch.zeros(batch_size, dtype=torch.long).to(sender_probs.device)
-                    receiver_output = self.receiver(possible_message_, receiver_input)
+                        torch.zeros(
+                            batch_size, dtype=torch.long).to(sender_probs.device)
+                    receiver_output = self.receiver(
+                        possible_message_, receiver_input)
 
                     loss_sum_term, logs = self.loss(
                         sender_input,
