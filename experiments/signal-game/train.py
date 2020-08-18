@@ -19,23 +19,20 @@ from opts import _populate_cl_params
 
 class SignalGame(pl.LightningModule):
     def __init__(
-            self, sender, receiver, loss, opts,
+            self, sender, receiver, loss, lvm_method, opts,
             sender_entropy_coeff=0.0, receiver_entropy_coeff=0.0):
         super(SignalGame, self).__init__()
-        self.sender = sender
-        self.receiver = receiver
-        self.loss = loss
-
-        self.receiver_entropy_coeff = receiver_entropy_coeff
-        self.sender_entropy_coeff = sender_entropy_coeff
-
-        self.mean_baseline = 0.0
-        self.n_points = 0.0
-
         self.opts = opts
 
+        self.lvm_method = lvm_method(
+            sender,
+            receiver,
+            loss,
+            encoder_entropy_coeff=sender_entropy_coeff,
+            decoder_entropy_coeff=receiver_entropy_coeff)
+
     def forward(self, sender_input, receiver_input, labels):
-        pass
+        return self.lvm_method(sender_input, receiver_input, labels)
 
     def _step(self, batch):
 
@@ -65,8 +62,8 @@ class SignalGame(pl.LightningModule):
             acc_mean += output['log']['acc']
             baseline_mean += output['log']['baseline']
             loss_mean += output['log']['loss']
-            sender_entropy_mean += output['log']['sender_entropy']
-            receiver_entropy_mean += output['log']['receiver_entropy']
+            sender_entropy_mean += output['log']['encoder_entropy']
+            receiver_entropy_mean += output['log']['decoder_entropy']
 
         acc_mean /= len(outputs)
         baseline_mean /= len(outputs)
@@ -186,27 +183,43 @@ class SignalGame(pl.LightningModule):
             seed=20200725)
 
 
-class ReinforceSignalGame(SignalGame):
-    def forward(self, sender_input, receiver_input, labels):
-        message, sender_log_prob, sender_entropy = \
-            self.sender(sender_input)
-        receiver_output, receiver_log_prob, receiver_entropy = \
-            self.receiver(message, receiver_input)
+class ScoreFunctionEstimator(torch.nn.Module):
+    def __init__(
+            self,
+            encoder,
+            decoder,
+            loss_fun,
+            encoder_entropy_coeff=0.0,
+            decoder_entropy_coeff=0.0):
+        super(ScoreFunctionEstimator, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.loss = loss_fun
+        self.encoder_entropy_coeff = encoder_entropy_coeff
+        self.decoder_entropy_coeff = decoder_entropy_coeff
+        self.mean_baseline = 0.0
+        self.n_points = 0.0
+
+    def forward(self, encoder_input, decoder_input, labels):
+        message, encoder_log_prob, encoder_entropy = \
+            self.encoder(encoder_input)
+        decoder_output, decoder_log_prob, decoder_entropy = \
+            self.decoder(message, decoder_input)
 
         loss, logs = self.loss(
-            sender_input,
+            encoder_input,
             message,
-            receiver_input,
-            receiver_output,
+            decoder_input,
+            decoder_output,
             labels)
         policy_loss = (
             (loss.detach() - self.mean_baseline) *
-            (sender_log_prob + receiver_log_prob)).mean()
+            (encoder_log_prob + decoder_log_prob)).mean()
         entropy_loss = -(
-            sender_entropy.mean() *
-            self.sender_entropy_coeff +
-            receiver_entropy.mean() *
-            self.receiver_entropy_coeff)
+            encoder_entropy.mean() *
+            self.encoder_entropy_coeff +
+            decoder_entropy.mean() *
+            self.decoder_entropy_coeff)
 
         if self.training:
             self.n_points += 1.0
@@ -221,22 +234,36 @@ class ReinforceSignalGame(SignalGame):
 
         logs['baseline'] = self.mean_baseline
         logs['loss'] = loss.mean()
-        logs['sender_entropy'] = sender_entropy.mean()
-        logs['receiver_entropy'] = receiver_entropy.mean()
+        logs['encoder_entropy'] = encoder_entropy.mean()
+        logs['decoder_entropy'] = decoder_entropy.mean()
 
         return {'loss': full_loss, 'log': logs}
 
 
-class GSSignalGame(SignalGame):
-    def forward(self, sender_input, receiver_input, labels):
-        message = self.sender(sender_input)
-        receiver_output = self.receiver(message, receiver_input)
+class Gumbel(torch.nn.Module):
+    def __init__(
+            self,
+            encoder,
+            decoder,
+            loss_fun,
+            encoder_entropy_coeff=0.0,
+            decoder_entropy_coeff=0.0):
+        super(Gumbel, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.loss = loss_fun
+        self.encoder_entropy_coeff = encoder_entropy_coeff
+        self.decoder_entropy_coeff = decoder_entropy_coeff
+
+    def forward(self, encoder_input, decoder_input, labels):
+        message = self.encoder(encoder_input)
+        decoder_output = self.decoder(message, decoder_input)
 
         loss, logs = self.loss(
-            sender_input,
+            encoder_input,
             message,
-            receiver_input,
-            receiver_output,
+            decoder_input,
+            decoder_output,
             labels)
 
         full_loss = loss.mean()
@@ -247,39 +274,53 @@ class GSSignalGame(SignalGame):
 
         logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
-        logs['sender_entropy'] = torch.zeros(1).to(loss.device)
-        logs['receiver_entropy'] = torch.zeros(1).to(loss.device)
+        logs['encoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
 
         return {'loss': full_loss, 'log': logs}
 
 
-class ExplicitSignalGame(SignalGame):
-    def forward(self, sender_input, receiver_input, labels):
-        message, sender_probs, sender_entropy = self.sender(sender_input)
-        batch_size, vocab_size = sender_probs.shape
+class Marginalizer(torch.nn.Module):
+    def __init__(
+            self,
+            encoder,
+            decoder,
+            loss_fun,
+            encoder_entropy_coeff=0.0,
+            decoder_entropy_coeff=0.0):
+        super(Marginalizer, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.loss = loss_fun
+        self.encoder_entropy_coeff = encoder_entropy_coeff
+        self.decoder_entropy_coeff = decoder_entropy_coeff
 
-        entropy_loss = -(sender_entropy.mean() * self.sender_entropy_coeff)
+    def forward(self, encoder_input, decoder_input, labels):
+        message, encoder_probs, encoder_entropy = self.encoder(encoder_input)
+        batch_size, vocab_size = encoder_probs.shape
+
+        entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
         if self.training:
-            losses = torch.zeros_like(sender_probs)
+            losses = torch.zeros_like(encoder_probs)
             logs_global = None
 
             for possible_message in range(vocab_size):
-                if sender_probs[:, possible_message].sum().item() != 0:
+                if encoder_probs[:, possible_message].sum().item() != 0:
                     # if it's zero, all batch examples
                     # will be multiplied by zero anyway,
                     # so skip computations
                     possible_message_ = \
                         possible_message + \
                         torch.zeros(
-                            batch_size, dtype=torch.long).to(sender_probs.device)
-                    receiver_output = self.receiver(
-                        possible_message_, receiver_input)
+                            batch_size, dtype=torch.long).to(encoder_probs.device)
+                    decoder_output = self.decoder(
+                        possible_message_, decoder_input)
 
                     loss_sum_term, logs = self.loss(
-                        sender_input,
+                        encoder_input,
                         message,
-                        receiver_input,
-                        receiver_output,
+                        decoder_input,
+                        decoder_output,
                         labels)
 
                     losses[:, possible_message] += loss_sum_term
@@ -290,28 +331,28 @@ class ExplicitSignalGame(SignalGame):
                         if hasattr(v, 'mean'):
                             # expectation of accuracy
                             logs_global[k] += (
-                                sender_probs[:, possible_message] * v).mean()
+                                encoder_probs[:, possible_message] * v).mean()
 
             for k, v in logs.items():
                 if hasattr(v, 'mean'):
                     logs[k] = logs_global[k]
 
-            # sender_probs: [batch_size, vocab_size]
+            # encoder_probs: [batch_size, vocab_size]
             # losses: [batch_size, vocab_size]
-            # sender_probs.unsqueeze(1): [batch_size, 1, vocab_size]
+            # encoder_probs.unsqueeze(1): [batch_size, 1, vocab_size]
             # losses.unsqueeze(-1): [batch_size, vocab_size, 1]
             # entropy_loss: []
             # full_loss: []
-            loss = sender_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
+            loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
             full_loss = loss.mean() + entropy_loss
 
         else:
-            receiver_output = self.receiver(message, receiver_input)
+            decoder_output = self.decoder(message, decoder_input)
             loss, logs = self.loss(
-                sender_input,
+                encoder_input,
                 message,
-                receiver_input,
-                receiver_output,
+                decoder_input,
+                decoder_output,
                 labels)
 
             full_loss = loss.mean() + entropy_loss
@@ -322,10 +363,10 @@ class ExplicitSignalGame(SignalGame):
 
         logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
-        logs['sender_entropy'] = sender_entropy.mean()
-        logs['receiver_entropy'] = torch.zeros(1).to(loss.device)
+        logs['encoder_entropy'] = encoder_entropy.mean()
+        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
         # TODO: nonzero for every epoch end
-        logs['nonzeros'] = (sender_probs != 0).sum(-1).to(torch.float).mean()
+        logs['nonzeros'] = (encoder_probs != 0).sum(-1).to(torch.float).mean()
         return {'loss': full_loss, 'log': logs}
 
 
@@ -364,35 +405,35 @@ def get_game(opt):
         feat_size,
         opt.embedding_size,
         opt.vocab_size,
-        reinforce=(opt.mode == 'rf' or opt.mode == 'explicit'))
+        reinforce=(opt.mode == 'rf' or opt.mode == 'marg'))
+
+    loss = loss_nll
 
     if opt.mode == 'rf':
         sender = ReinforceWrapper(sender)
+        receiver = ReinforceDeterministicWrapper(receiver)
         if opt.loss == 'acc':
             loss = loss_acc
             receiver = ReinforceWrapper(receiver)
-        else:
-            loss = loss_nll
-            receiver = ReinforceDeterministicWrapper(receiver)
-        game = ReinforceSignalGame(
-            sender, receiver, loss, opt,
-            sender_entropy_coeff=opt.entropy_coeff,
-            receiver_entropy_coeff=opt.entropy_coeff)
+        lvm_method = ScoreFunctionEstimator
     elif opt.mode == 'gs':
         sender = GumbelSoftmaxWrapper(
             sender,
             temperature=opt.gs_tau,
             trainable_temperature=False,
             straight_through=False)
-        game = GSSignalGame(sender, receiver, loss_nll, opt)
-    elif opt.mode == 'explicit':
+        lvm_method = Gumbel
+    elif opt.mode == 'marg':
         sender = ExplicitWrapper(sender, normalizer=opt.normalizer)
-        game = ExplicitSignalGame(
-            sender, receiver, loss_nll, opt,
-            sender_entropy_coeff=opt.entropy_coeff)
+        lvm_method = Marginalizer
+
     else:
         raise RuntimeError(f"Unknown training mode: {opt.mode}")
 
+    game = SignalGame(
+        sender, receiver, loss, lvm_method, opt,
+        sender_entropy_coeff=opt.entropy_coeff,
+        receiver_entropy_coeff=opt.entropy_coeff)
     return game
 
 
