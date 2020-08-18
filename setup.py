@@ -4,7 +4,7 @@ with open('requirements.txt') as f:
     requirements = f.read().splitlines()
 
 setup(
-    name='lvmwrappers',
+    name='lvmwhelpers',
     version='0.2',
     url='https://github.com/goncalomcorreia/explicit-sparse-marginalization',
     author='Gonçalo Correia',

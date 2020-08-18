@@ -104,3 +104,43 @@ class GumbelSoftmaxWrapper(nn.Module):
         sample = gumbel_softmax_sample(
             logits, self.temperature, self.training, self.straight_through)
         return sample
+
+
+class Gumbel(torch.nn.Module):
+    def __init__(
+            self,
+            encoder,
+            decoder,
+            loss_fun,
+            encoder_entropy_coeff=0.0,
+            decoder_entropy_coeff=0.0):
+        super(Gumbel, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.loss = loss_fun
+        self.encoder_entropy_coeff = encoder_entropy_coeff
+        self.decoder_entropy_coeff = decoder_entropy_coeff
+
+    def forward(self, encoder_input, decoder_input, labels):
+        message = self.encoder(encoder_input)
+        decoder_output = self.decoder(message, decoder_input)
+
+        loss, logs = self.loss(
+            encoder_input,
+            message,
+            decoder_input,
+            decoder_output,
+            labels)
+
+        full_loss = loss.mean()
+
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = v.mean()
+
+        logs['baseline'] = torch.zeros(1).to(loss.device)
+        logs['loss'] = loss.mean()
+        logs['encoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
+
+        return {'loss': full_loss, 'log': logs}

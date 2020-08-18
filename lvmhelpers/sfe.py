@@ -71,3 +71,60 @@ class ReinforceDeterministicWrapper(nn.Module):
         out = self.agent(*args, **kwargs)
 
         return out, torch.zeros(1).to(out.device), torch.zeros(1).to(out.device)
+
+
+class ScoreFunctionEstimator(torch.nn.Module):
+    def __init__(
+            self,
+            encoder,
+            decoder,
+            loss_fun,
+            encoder_entropy_coeff=0.0,
+            decoder_entropy_coeff=0.0):
+        super(ScoreFunctionEstimator, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.loss = loss_fun
+        self.encoder_entropy_coeff = encoder_entropy_coeff
+        self.decoder_entropy_coeff = decoder_entropy_coeff
+        self.mean_baseline = 0.0
+        self.n_points = 0.0
+
+    def forward(self, encoder_input, decoder_input, labels):
+        message, encoder_log_prob, encoder_entropy = \
+            self.encoder(encoder_input)
+        decoder_output, decoder_log_prob, decoder_entropy = \
+            self.decoder(message, decoder_input)
+
+        loss, logs = self.loss(
+            encoder_input,
+            message,
+            decoder_input,
+            decoder_output,
+            labels)
+        policy_loss = (
+            (loss.detach() - self.mean_baseline) *
+            (encoder_log_prob + decoder_log_prob)).mean()
+        entropy_loss = -(
+            encoder_entropy.mean() *
+            self.encoder_entropy_coeff +
+            decoder_entropy.mean() *
+            self.decoder_entropy_coeff)
+
+        if self.training:
+            self.n_points += 1.0
+            self.mean_baseline += (loss.detach().mean().item() -
+                                   self.mean_baseline) / self.n_points
+
+        full_loss = policy_loss + entropy_loss + loss.mean()
+
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = v.mean()
+
+        logs['baseline'] = self.mean_baseline
+        logs['loss'] = loss.mean()
+        logs['encoder_entropy'] = encoder_entropy.mean()
+        logs['decoder_entropy'] = decoder_entropy.mean()
+
+        return {'loss': full_loss, 'log': logs}
