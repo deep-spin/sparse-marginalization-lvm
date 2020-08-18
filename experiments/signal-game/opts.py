@@ -1,7 +1,8 @@
 import argparse
 
 
-def _populate_cl_params(arg_parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+def _populate_cl_params(
+        arg_parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
 
     arg_parser.add_argument(
         '--root', default='data/signal-game/', help='data root folder')

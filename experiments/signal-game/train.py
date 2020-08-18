@@ -12,7 +12,7 @@ from lvmwrappers.reinforce_wrappers import \
 from lvmwrappers.gumbel_wrappers import GumbelSoftmaxWrapper
 # from lvmwrappers.callbacks import TemperatureUpdater
 
-from features import ImageNetFeat, ImagenetLoader
+from data import ImageNetFeat, ImagenetLoader
 from archs import Sender, Receiver
 from opts import _populate_cl_params
 
