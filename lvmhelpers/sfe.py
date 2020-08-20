@@ -69,8 +69,8 @@ class ReinforceDeterministicWrapper(nn.Module):
 
     def forward(self, *args, **kwargs):
         out = self.agent(*args, **kwargs)
-
-        return out, torch.zeros(1).to(out.device), torch.zeros(1).to(out.device)
+        device = next(self.parameters()).device
+        return out, torch.zeros(1).to(device), torch.zeros(1).to(device)
 
 
 class ScoreFunctionEstimator(torch.nn.Module):
@@ -91,14 +91,14 @@ class ScoreFunctionEstimator(torch.nn.Module):
         self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
-        message, encoder_log_prob, encoder_entropy = \
+        discrete_latent_z, encoder_log_prob, encoder_entropy = \
             self.encoder(encoder_input)
         decoder_output, decoder_log_prob, decoder_entropy = \
-            self.decoder(message, decoder_input)
+            self.decoder(discrete_latent_z, decoder_input)
 
         loss, logs = self.loss(
             encoder_input,
-            message,
+            discrete_latent_z,
             decoder_input,
             decoder_output,
             labels)
