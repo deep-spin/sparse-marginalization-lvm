@@ -113,7 +113,7 @@ class ScoreFunctionEstimator(torch.nn.Module):
 
         if self.training:
             self.n_points += 1.0
-            self.mean_baseline += (loss.detach().mean().item() -
+            self.mean_baseline += (loss.detach().mean() -
                                    self.mean_baseline) / self.n_points
 
         full_loss = policy_loss + entropy_loss + loss.mean()

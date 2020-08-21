@@ -63,7 +63,7 @@ class Marginalizer(torch.nn.Module):
             logs_global = None
 
             for possible_message in range(vocab_size):
-                if encoder_probs[:, possible_message].sum().item() != 0:
+                if encoder_probs[:, possible_message].sum().detach() != 0:
                     # if it's zero, all batch examples
                     # will be multiplied by zero anyway,
                     # so skip computations
