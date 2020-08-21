@@ -109,7 +109,6 @@ class SSVAE(pl.LightningModule):
                 unlabeled_batch_labels)
             unsupervised_loss = unsupervised_output['loss']
 
-            # TODO: check conversation with Wilker
             loss = \
                 supervised_loss + \
                 unsupervised_loss * (self.num_unlabeled / self.num_labeled)
