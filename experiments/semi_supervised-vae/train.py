@@ -27,6 +27,8 @@ class SSVAE(pl.LightningModule):
             n_classes,
             mode,
             gs_tau,
+            temperature_decay,
+            temperature_update_freq,
             normalizer,
             lr,
             weight_decay,
@@ -114,6 +116,14 @@ class SSVAE(pl.LightningModule):
                 unsupervised_loss * (self.num_unlabeled / self.num_labeled)
         else:
             loss = supervised_loss
+
+        # Update temperature if Gumbel
+        if (self.hparams.mode == 'gs' and
+                self.global_step % self.hparams.temperature_update_freq == 0):
+
+            rt = self.hparams.temperature_decay * torch.tensor(self.global_step)
+            self.lvm_method.encoder.temperature = torch.max(
+                torch.tensor(0.5), torch.exp(-rt))
 
         result = pl.TrainResult(minimize=loss)
         if not self.hparams.labeled_only:
@@ -264,6 +274,8 @@ def get_model(opt):
         n_classes=10,
         mode=opt.mode,
         gs_tau=opt.gs_tau,
+        temperature_decay=opt.temperature_decay,
+        temperature_update_freq=opt.temperature_update_freq,
         normalizer=opt.normalizer,
         lr=opt.lr,
         weight_decay=opt.weight_decay,

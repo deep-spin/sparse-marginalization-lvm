@@ -35,6 +35,12 @@ def _populate_cl_params(
     arg_parser.add_argument(
         '--warm_start_path', type=str, default='',
         help='Path for warm start')
+    arg_parser.add_argument(
+        '--temperature_decay', type=float, default=1e-5,
+        help='temperature decay constant for Gumbel-Softmax (default: 1e-5)')
+    arg_parser.add_argument(
+        '--temperature_update_freq', type=int, default=1000,
+        help='temperature decay frequency for Gumbel-Softmax, in steps (default: 1000)')
 
     arg_parser.add_argument(
         '--random_seed', type=int, default=42,
