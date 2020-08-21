@@ -111,8 +111,8 @@ class SSVAE(pl.LightningModule):
 
             # TODO: check conversation with Wilker
             loss = \
-                unsupervised_loss + \
-                supervised_loss * (self.num_labeled / self.num_unlabeled)
+                supervised_loss + \
+                unsupervised_loss * (self.num_unlabeled / self.num_labeled)
         else:
             loss = supervised_loss
 
