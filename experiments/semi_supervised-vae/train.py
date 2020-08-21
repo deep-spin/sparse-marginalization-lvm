@@ -324,7 +324,8 @@ def main(params):
         logger=tb_logger,
         max_epochs=opts.n_epochs,
         weights_save_path='checkpoints/',
-        weights_summary='full')
+        weights_summary='full',
+        gpus=1 if torch.cuda.is_available() else 0)
     trainer.fit(model)
 
 
