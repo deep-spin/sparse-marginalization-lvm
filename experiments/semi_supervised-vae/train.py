@@ -305,18 +305,18 @@ def main(params):
     #     callbacks = []
 
     experiment_name = 'ssvae'
-
     if not opts.labeled_only:
         model_name = '%s/%s' % (experiment_name, opts.mode)
     else:
         model_name = '%s/warm_start' % (experiment_name, )
-    version_name = [
+    other_info = [
         "lr-{}".format(opts.lr),
     ]
+    model_name = '%s/%s' % (model_name, '_'.join(other_info))
+
     tb_logger = pl_loggers.TensorBoardLogger(
         'logs/',
-        name=model_name,
-        version="_".join(version_name))
+        name=model_name)
 
     trainer = pl.Trainer(
         progress_bar_refresh_rate=20,
