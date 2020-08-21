@@ -117,18 +117,19 @@ class SSVAE(pl.LightningModule):
         else:
             loss = supervised_loss
 
-        # Update temperature if Gumbel
-        if (self.hparams.mode == 'gs' and
-                self.global_step % self.hparams.temperature_update_freq == 0):
-
-            rt = self.hparams.temperature_decay * torch.tensor(self.global_step)
-            self.lvm_method.encoder.temperature = torch.max(
-                torch.tensor(0.5), torch.exp(-rt))
-
         result = pl.TrainResult(minimize=loss)
         if not self.hparams.labeled_only:
             result.log('train_elbo', unsupervised_output['log']['loss'], prog_bar=True)
             result.log('train_acc', unsupervised_output['log']['acc'], prog_bar=True)
+
+        # Update temperature if Gumbel
+        if self.hparams.mode == 'gs':
+            self.lvm_method.encoder.update_temperature(
+                self.global_step,
+                self.hparams.temperature_update_freq,
+                self.hparams.temperature_decay)
+            result.log('temperature', self.lvm_method.encoder.temperature)
+
         return result
 
     def validation_step(self, batch, batch_nb):

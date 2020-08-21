@@ -105,6 +105,18 @@ class GumbelSoftmaxWrapper(nn.Module):
             logits, self.temperature, self.training, self.straight_through)
         return sample
 
+    def update_temperature(
+            self, current_step, temperature_update_freq, temperature_decay):
+        """
+        use this at the end of each training step to anneal the temperature according
+        to max(0.5, exp(-rt)) with r and t being the decay rate and training step,
+        respectively.
+        """
+        if current_step % temperature_update_freq == 0:
+            rt = temperature_decay * torch.tensor(current_step)
+            self.temperature = torch.max(
+                torch.tensor(0.5), torch.exp(-rt))
+
 
 class Gumbel(torch.nn.Module):
     def __init__(
