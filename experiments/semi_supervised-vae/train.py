@@ -324,7 +324,8 @@ def main(params):
         max_epochs=opts.n_epochs,
         weights_save_path='checkpoints/',
         weights_summary='full',
-        gpus=1 if torch.cuda.is_available() else 0)
+        gpus=1 if torch.cuda.is_available() else 0,
+        resume_from_checkpoint=opts.load_from_checkpoint)
     trainer.fit(model)
 
 
