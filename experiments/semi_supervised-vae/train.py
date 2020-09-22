@@ -29,6 +29,7 @@ class SSVAE(pl.LightningModule):
             gs_tau,
             temperature_decay,
             temperature_update_freq,
+            straight_through,
             normalizer,
             lr,
             weight_decay,
@@ -66,8 +67,7 @@ class SSVAE(pl.LightningModule):
             classifier_net = GumbelSoftmaxWrapper(
                 classifier_net,
                 temperature=self.hparams.gs_tau,
-                trainable_temperature=False,
-                straight_through=False)
+                straight_through=self.hparams.straight_through)
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = Gumbel
         elif self.hparams.mode == 'marg':
@@ -277,6 +277,7 @@ def get_model(opt):
         gs_tau=opt.gs_tau,
         temperature_decay=opt.temperature_decay,
         temperature_update_freq=opt.temperature_update_freq,
+        straight_through=opt.straight_through,
         normalizer=opt.normalizer,
         lr=opt.lr,
         weight_decay=opt.weight_decay,
@@ -291,6 +292,9 @@ def get_model(opt):
             n_classes=10,
             mode=opt.mode,
             gs_tau=opt.gs_tau,
+            temperature_decay=opt.temperature_decay,
+            temperature_update_freq=opt.temperature_update_freq,
+            straight_through=opt.straight_through,
             normalizer=opt.normalizer,
             lr=opt.lr,
             weight_decay=opt.weight_decay,

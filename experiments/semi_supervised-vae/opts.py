@@ -31,6 +31,7 @@ def _populate_cl_params(
                             help='acc or nll')
     arg_parser.add_argument('--gs_tau', type=float, default=1.0,
                             help='GS temperature')
+    arg_parser.add_argument("--straight_through", action="store_true")
     arg_parser.add_argument("--labeled_only", action="store_true")
     arg_parser.add_argument(
         '--warm_start_path', type=str, default='',
