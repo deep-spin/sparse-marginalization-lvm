@@ -22,15 +22,17 @@ def _populate_cl_params(
     arg_parser.add_argument('--entropy_coeff', type=float, default=0.1,
                             help="""Sender and Receiver entropy
                         loss term coefficient (regularization)""")
-    arg_parser.add_argument('--mode', type=str, default='rf',
+    arg_parser.add_argument('--mode', type=str, default='sfe',
                             help="""Training mode: Gumbel-Softmax (gs) or
-                        Reinforce (rf). Default: rf.""")
+                        SFE (sfe). Default: sfe.""")
     arg_parser.add_argument('--normalizer', type=str, default='entmax',
                             help='softmax, sparsemax or entmax15')
     arg_parser.add_argument('--loss', type=str, default='nll',
                             help='acc or nll')
     arg_parser.add_argument('--gs_tau', type=float, default=1.0,
                             help='GS temperature')
+    arg_parser.add_argument('--baseline_type', type=str, default='runavg',
+                            help='runavg or sample')
 
     arg_parser.add_argument(
         '--random_seed', type=int, default=42,

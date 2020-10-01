@@ -26,6 +26,7 @@ class SSVAE(pl.LightningModule):
             slen,
             n_classes,
             mode,
+            baseline_type,
             gs_tau,
             temperature_decay,
             temperature_update_freq,
@@ -59,8 +60,10 @@ class SSVAE(pl.LightningModule):
 
         loss_fun = get_unsupervised_loss
 
-        if self.hparams.mode == 'rf':
-            classifier_net = ReinforceWrapper(classifier_net)
+        if self.hparams.mode == 'sfe':
+            classifier_net = ReinforceWrapper(
+                classifier_net,
+                baseline_type=self.hparams.baseline_type)
             gaussian_vae = ReinforceDeterministicWrapper(gaussian_vae)
             lvm_method = ScoreFunctionEstimator
         elif self.hparams.mode == 'gs':
@@ -274,6 +277,7 @@ def get_model(opt):
         slen=28,
         n_classes=10,
         mode=opt.mode,
+        baseline_type=opt.baseline_type,
         gs_tau=opt.gs_tau,
         temperature_decay=opt.temperature_decay,
         temperature_update_freq=opt.temperature_update_freq,
@@ -291,6 +295,7 @@ def get_model(opt):
             slen=28,
             n_classes=10,
             mode=opt.mode,
+            baseline_type=opt.baseline_type,
             gs_tau=opt.gs_tau,
             temperature_decay=opt.temperature_decay,
             temperature_update_freq=opt.temperature_update_freq,
@@ -314,12 +319,6 @@ def main(params):
     pl.seed_everything(opts.random_seed)
 
     model = get_model(opts)
-
-    # if opts.mode == 'gs':
-    #     callbacks = [TemperatureUpdater(
-    #         agent=game.sender, decay=0.9, minimum=0.1)]
-    # else:
-    #     callbacks = []
 
     experiment_name = 'ssvae'
     if not opts.labeled_only:

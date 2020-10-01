@@ -218,11 +218,11 @@ def get_game(opt):
         feat_size,
         opt.embedding_size,
         opt.vocab_size,
-        reinforce=(opt.mode == 'rf' or opt.mode == 'marg'))
+        reinforce=(opt.mode == 'sfe' or opt.mode == 'marg'))
 
     loss = loss_nll
 
-    if opt.mode == 'rf':
+    if opt.mode == 'sfe':
         sender = ReinforceWrapper(sender)
         receiver = ReinforceDeterministicWrapper(receiver)
         if opt.loss == 'acc':

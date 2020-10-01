@@ -27,9 +27,10 @@ class ReinforceWrapper(nn.Module):
     >>> (entropy > 0).all().item()
     1
     """
-    def __init__(self, agent):
+    def __init__(self, agent, baseline_type):
         super(ReinforceWrapper, self).__init__()
         self.agent = agent
+        self.baseline_type = baseline_type
 
     def forward(self, *args, **kwargs):
         logits = self.agent(*args, **kwargs)
@@ -41,9 +42,8 @@ class ReinforceWrapper(nn.Module):
             sample = distr.sample()
         else:
             sample = logits.argmax(dim=1)
-        log_prob = distr.log_prob(sample)
 
-        return sample, log_prob, entropy
+        return sample, logits, entropy
 
 
 class ReinforceDeterministicWrapper(nn.Module):
@@ -102,19 +102,36 @@ class ScoreFunctionEstimator(torch.nn.Module):
             decoder_input,
             decoder_output,
             labels)
+
+        categorical_helper = Categorical(logits=encoder_log_prob)
+
+        if self.encoder.baseline_type == 'runavg':
+            baseline = self.mean_baseline
+        elif self.encoder.baseline_type == 'sample':
+            alt_z_sample = categorical_helper.sample().detach()
+            decoder_output, decoder_log_prob, decoder_entropy = \
+                self.decoder(alt_z_sample, decoder_input)
+            baseline, _ = self.loss(
+                encoder_input,
+                alt_z_sample,
+                decoder_input,
+                decoder_output,
+                labels)
+
         policy_loss = (
-            (loss.detach() - self.mean_baseline) *
-            (encoder_log_prob + decoder_log_prob)).mean()
+            (loss.detach() - baseline) *
+            (categorical_helper.log_prob(discrete_latent_z) + decoder_log_prob)
+            ).mean()
         entropy_loss = -(
             encoder_entropy.mean() *
             self.encoder_entropy_coeff +
             decoder_entropy.mean() *
             self.decoder_entropy_coeff)
 
-        if self.training:
+        if self.training and self.encoder.baseline_type == 'runavg':
             self.n_points += 1.0
-            self.mean_baseline += (loss.detach().mean() -
-                                   self.mean_baseline) / self.n_points
+            self.mean_baseline += (
+                loss.detach().mean() - self.mean_baseline) / self.n_points
 
         full_loss = policy_loss + entropy_loss + loss.mean()
 

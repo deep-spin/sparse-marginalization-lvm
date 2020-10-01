@@ -22,9 +22,9 @@ def _populate_cl_params(
     arg_parser.add_argument('--entropy_coeff', type=float, default=0.1,
                             help="""Sender and Receiver entropy
                         loss term coefficient (regularization)""")
-    arg_parser.add_argument('--mode', type=str, default='rf',
+    arg_parser.add_argument('--mode', type=str, default='sfe',
                             help="""Training mode: Gumbel-Softmax (gs) or
-                        Reinforce (rf). Default: rf.""")
+                        SFE (sfe). Default: sfe.""")
     arg_parser.add_argument('--normalizer', type=str, default='entmax',
                             help='softmax, sparsemax or entmax15')
     arg_parser.add_argument('--loss', type=str, default='nll',
@@ -42,6 +42,8 @@ def _populate_cl_params(
     arg_parser.add_argument(
         '--temperature_update_freq', type=int, default=1000,
         help='temperature decay frequency for Gumbel-Softmax, in steps (default: 1000)')
+    arg_parser.add_argument('--baseline_type', type=str, default='runavg',
+                            help='runavg or sample')
 
     arg_parser.add_argument(
         '--random_seed', type=int, default=42,
@@ -84,8 +86,8 @@ def _populate_cl_params(
         '--optimizer', type=str, default='adam',
         help='Optimizer to use [adam, sgd, adagrad] (default: adam)')
     arg_parser.add_argument(
-        '--lr', type=float, default=1e-2,
-        help='Learning rate (default: 1e-2)')
+        '--lr', type=float, default=1e-3,
+        help='Learning rate (default: 1e-3)')
     arg_parser.add_argument(
         '--weight_decay', type=float, default=1e-5,
         help='L2 regularization constant (default: 1e-5)')
