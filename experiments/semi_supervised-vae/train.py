@@ -8,6 +8,8 @@ from torch.nn import CrossEntropyLoss
 
 from lvmhelpers.marg import \
     ExplicitWrapper, Marginalizer
+from lvmhelpers.sum_and_sample import \
+    SumAndSampleWrapper, SumAndSample
 from lvmhelpers.sfe import \
     ReinforceWrapper, ReinforceDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.gumbel import \
@@ -27,6 +29,7 @@ class SSVAE(pl.LightningModule):
             n_classes,
             mode,
             baseline_type,
+            topk,
             gs_tau,
             temperature_decay,
             temperature_update_freq,
@@ -77,6 +80,10 @@ class SSVAE(pl.LightningModule):
             classifier_net = ExplicitWrapper(classifier_net, normalizer=normalizer)
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = Marginalizer
+        elif self.hparams.mode == 'sumsample':
+            classifier_net = SumAndSampleWrapper(classifier_net, topk=self.hparams.topk)
+            gaussian_vae = DeterministicWrapper(gaussian_vae)
+            lvm_method = SumAndSample
         else:
             raise RuntimeError(f"Unknown training mode: {self.hparams.mode}")
         self.lvm_method = lvm_method(
@@ -278,6 +285,7 @@ def get_model(opt):
         n_classes=10,
         mode=opt.mode,
         baseline_type=opt.baseline_type,
+        topk=opt.topk,
         gs_tau=opt.gs_tau,
         temperature_decay=opt.temperature_decay,
         temperature_update_freq=opt.temperature_update_freq,
@@ -296,6 +304,7 @@ def get_model(opt):
             n_classes=10,
             mode=opt.mode,
             baseline_type=opt.baseline_type,
+            topk=opt.topk,
             gs_tau=opt.gs_tau,
             temperature_decay=opt.temperature_decay,
             temperature_update_freq=opt.temperature_update_freq,

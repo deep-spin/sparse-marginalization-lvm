@@ -46,6 +46,10 @@ def _populate_cl_params(
                             help='runavg or sample')
 
     arg_parser.add_argument(
+        '--topk', type=int, default=1,
+        help='number of classes summed over for sum&sample gradient estimator')
+
+    arg_parser.add_argument(
         '--random_seed', type=int, default=42,
         help='Set random seed')
     # trainer params
