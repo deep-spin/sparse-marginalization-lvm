@@ -4,7 +4,9 @@ import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 
 import torch
-from torch.nn import CrossEntropyLoss
+from torch.nn import NLLLoss
+
+from entmax import SparsemaxLoss, Entmax15Loss
 
 from lvmhelpers.marg import \
     ExplicitWrapper, Marginalizer
@@ -77,7 +79,8 @@ class SSVAE(pl.LightningModule):
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = Gumbel
         elif self.hparams.mode == 'marg':
-            classifier_net = ExplicitWrapper(classifier_net, normalizer=normalizer)
+            classifier_net = ExplicitWrapper(
+                classifier_net, normalizer=self.hparams.normalizer)
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = Marginalizer
         elif self.hparams.mode == 'sumsample':
@@ -112,7 +115,11 @@ class SSVAE(pl.LightningModule):
         classifier = self.lvm_method.encoder
 
         supervised_loss = get_supervised_loss(
-            vae, classifier, labeled_batch_image, labeled_batch_labels)
+            vae,
+            classifier,
+            labeled_batch_image,
+            labeled_batch_labels,
+            self.hparams.normalizer)
 
         if not self.hparams.labeled_only:
             unsupervised_output = self(
@@ -265,14 +272,26 @@ def get_unsupervised_loss(
     return vae_loss, {'acc': acc}
 
 
-def get_supervised_loss(vae, classifier, labeled_image, true_labels):
-    loss = CrossEntropyLoss(reduction='none')
+def get_supervised_loss(
+        vae,
+        classifier,
+        labeled_image,
+        true_labels,
+        normalizer):
+    if normalizer == 'softmax':
+        loss = NLLLoss(reduction='none')
+    elif normalizer == 'entmax15':
+        loss = Entmax15Loss(reduction='none')
+    elif normalizer == 'sparsemax':
+        loss = SparsemaxLoss(reduction='none')
+    else:
+        raise NameError("%s is not a valid normalizer!" % (normalizer, ))
     # get loss on a batch of labeled images
     vae_output = vae(true_labels, labeled_image)
     labeled_loss = get_elbo_loss(labeled_image, vae_output)
     # cross entropy term
-    scores = classifier.agent.forward(labeled_image)
-    cross_entropy = loss(scores, true_labels)
+    logits = classifier.agent.forward(labeled_image)
+    cross_entropy = loss(logits, true_labels)
 
     return (labeled_loss + cross_entropy).mean()
 
@@ -333,7 +352,7 @@ def main(params):
     if not opts.labeled_only:
         model_name = '%s/%s' % (experiment_name, opts.mode)
     else:
-        model_name = '%s/warm_start' % (experiment_name, )
+        model_name = '%s/warm_start/%s' % (experiment_name, opts.normalizer)
     other_info = [
         "lr-{}".format(opts.lr),
     ]
