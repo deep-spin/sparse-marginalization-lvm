@@ -46,9 +46,6 @@ class Sender(nn.Module):
         return logits
 
     def return_embeddings(self, x):
-        # embed each image (left or right)
-        embs = []
-
         # sender only sees a single image---the one receiver needs to pick
         h = x[0]
         if len(h.size()) == 3:
@@ -58,11 +55,7 @@ class Sender(nn.Module):
         h_i = h_i.unsqueeze(dim=1)
         h_i = h_i.unsqueeze(dim=1)
         # h_i are now batch_size x 1 x 1 x embedding_size
-        embs.append(h_i)
-        # concatenate the embeddings
-        h = torch.cat(embs, dim=2)
-
-        return h
+        return h_i
 
 
 class Receiver(nn.Module):

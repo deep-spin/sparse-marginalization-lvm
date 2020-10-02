@@ -20,25 +20,27 @@ class _BatchIterator:
 
     def get_batch(self):
         loader = self.loader
-        opt = loader.opt
+        bsz = loader.bsz
+        game_size = loader.game_size
+        same = loader.same
 
         C = len(self.loader.dataset.obj2id.keys())  # number of concepts
-        images_indexes_sender = np.zeros((opt.batch_size, opt.game_size))
+        images_indexes_sender = np.zeros((bsz, game_size))
 
-        for b in range(opt.batch_size):
-            if opt.same:
+        for b in range(bsz):
+            if same:
                 # randomly sample a concept
                 concepts = self.random_state.choice(C, 1)
                 c = concepts[0]
                 ims = loader.dataset.obj2id[c]["ims"]
                 idxs_sender = self.random_state.choice(
-                    ims, opt.game_size, replace=False)
+                    ims, game_size, replace=False)
                 images_indexes_sender[b, :] = idxs_sender
             else:
                 idxs_sender = []
                 # randomly sample k concepts
                 concepts = self.random_state.choice(
-                    C, opt.game_size, replace=False)
+                    C, game_size, replace=False)
                 for i, c in enumerate(concepts):
                     ims = loader.dataset.obj2id[c]["ims"]
                     idx = self.random_state.choice(ims, 2, replace=False)
@@ -48,16 +50,16 @@ class _BatchIterator:
 
         images_vectors_sender = []
 
-        for i in range(opt.game_size):
+        for i in range(game_size):
             x, _ = loader.dataset[images_indexes_sender[:, i]]
             images_vectors_sender.append(x)
 
         images_vectors_sender = torch.stack(images_vectors_sender).contiguous()
-        y = torch.zeros(opt.batch_size).long()
+        y = torch.zeros(bsz).long()
 
         images_vectors_receiver = torch.zeros_like(images_vectors_sender)
-        for i in range(opt.batch_size):
-            permutation = torch.randperm(opt.game_size)
+        for i in range(bsz):
+            permutation = torch.randperm(game_size)
 
             images_vectors_receiver[:, i,
                                     :] = images_vectors_sender[permutation, i, :]
@@ -67,8 +69,10 @@ class _BatchIterator:
 
 class ImagenetLoader(torch.utils.data.DataLoader):
     def __init__(self, *args, **kwargs):
-        self.opt = kwargs.pop('opt')
         self.seed = kwargs.pop('seed')
+        self.bsz = kwargs.pop('batch_size')
+        self.game_size = kwargs.pop('game_size')
+        self.same = kwargs.pop('same')
 
         super(ImagenetLoader, self).__init__(*args, **kwargs)
 

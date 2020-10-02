@@ -25,14 +25,26 @@ def _populate_cl_params(
     arg_parser.add_argument('--mode', type=str, default='sfe',
                             help="""Training mode: Gumbel-Softmax (gs) or
                         SFE (sfe). Default: sfe.""")
-    arg_parser.add_argument('--normalizer', type=str, default='entmax',
+    arg_parser.add_argument('--normalizer', type=str, default='softmax',
                             help='softmax, sparsemax or entmax15')
-    arg_parser.add_argument('--loss', type=str, default='nll',
+    arg_parser.add_argument('--loss_type', type=str, default='nll',
                             help='acc or nll')
     arg_parser.add_argument('--gs_tau', type=float, default=1.0,
                             help='GS temperature')
+    arg_parser.add_argument("--straight_through", action="store_true")
     arg_parser.add_argument('--baseline_type', type=str, default='runavg',
                             help='runavg or sample')
+
+    arg_parser.add_argument(
+        '--temperature_decay', type=float, default=1e-5,
+        help='temperature decay constant for Gumbel-Softmax (default: 1e-5)')
+    arg_parser.add_argument(
+        '--temperature_update_freq', type=int, default=1000,
+        help='temperature decay frequency for Gumbel-Softmax, in steps (default: 1000)')
+
+    arg_parser.add_argument(
+        '--topk', type=int, default=1,
+        help='number of classes summed over for sum&sample gradient estimator')
 
     arg_parser.add_argument(
         '--random_seed', type=int, default=42,
@@ -77,6 +89,9 @@ def _populate_cl_params(
     arg_parser.add_argument(
         '--lr', type=float, default=1e-2,
         help='Learning rate (default: 1e-2)')
+    arg_parser.add_argument(
+        '--weight_decay', type=float, default=0.0,
+        help='L2 regularization constant (default: 0.0)')
 
     # Channel parameters
     arg_parser.add_argument(

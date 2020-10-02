@@ -63,7 +63,7 @@ class SumAndSampleWrapper(nn.Module):
         distr = Categorical(logits=logits)
         entropy = distr.entropy()
 
-        sample = logits.argmax(dim=1)
+        sample = logits.argmax(dim=-1)
 
         return sample, logits, entropy
 

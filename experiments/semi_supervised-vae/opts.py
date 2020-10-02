@@ -25,7 +25,7 @@ def _populate_cl_params(
     arg_parser.add_argument('--mode', type=str, default='sfe',
                             help="""Training mode: Gumbel-Softmax (gs) or
                         SFE (sfe). Default: sfe.""")
-    arg_parser.add_argument('--normalizer', type=str, default='entmax',
+    arg_parser.add_argument('--normalizer', type=str, default='softmax',
                             help='softmax, sparsemax or entmax15')
     arg_parser.add_argument('--loss', type=str, default='nll',
                             help='acc or nll')

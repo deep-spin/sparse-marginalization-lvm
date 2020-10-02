@@ -41,7 +41,7 @@ class ReinforceWrapper(nn.Module):
         if self.training:
             sample = distr.sample()
         else:
-            sample = logits.argmax(dim=1)
+            sample = logits.argmax(dim=-1)
 
         return sample, logits, entropy
 
@@ -103,14 +103,19 @@ class ScoreFunctionEstimator(torch.nn.Module):
             decoder_output,
             labels)
 
-        categorical_helper = Categorical(logits=encoder_log_prob)
+        encoder_categorical_helper = Categorical(logits=encoder_log_prob)
+        encoder_sample_log_probs = encoder_categorical_helper.log_prob(discrete_latent_z)
+        if len(decoder_log_prob.size()) != 1:
+            decoder_categorical_helper = Categorical(logits=decoder_log_prob)
+            decoder_sample_log_probs = decoder_categorical_helper.log_prob(decoder_output)
+        else:
+            decoder_sample_log_probs = decoder_log_prob
 
         if self.encoder.baseline_type == 'runavg':
             baseline = self.mean_baseline
         elif self.encoder.baseline_type == 'sample':
-            alt_z_sample = categorical_helper.sample().detach()
-            decoder_output, decoder_log_prob, decoder_entropy = \
-                self.decoder(alt_z_sample, decoder_input)
+            alt_z_sample = encoder_categorical_helper.sample().detach()
+            decoder_output, _, _ = self.decoder(alt_z_sample, decoder_input)
             baseline, _ = self.loss(
                 encoder_input,
                 alt_z_sample,
@@ -120,7 +125,7 @@ class ScoreFunctionEstimator(torch.nn.Module):
 
         policy_loss = (
             (loss.detach() - baseline) *
-            (categorical_helper.log_prob(discrete_latent_z) + decoder_log_prob)
+            (encoder_sample_log_probs + decoder_sample_log_probs)
             ).mean()
         entropy_loss = -(
             encoder_entropy.mean() *
