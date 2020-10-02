@@ -116,6 +116,12 @@ class SignalGame(pl.LightningModule):
         result.log('train_loss', training_result['log']['loss'], prog_bar=True)
         result.log('train_acc', training_result['log']['acc'], prog_bar=True)
 
+        if 'nonzeros' in training_result['log'].keys():
+            result.log(
+                'train_nonzeros',
+                training_result['log']['nonzeros'],
+                prog_bar=True)
+
         # Update temperature if Gumbel
         if self.hparams.mode == 'gs':
             self.lvm_method.encoder.update_temperature(
@@ -132,6 +138,12 @@ class SignalGame(pl.LightningModule):
         result = pl.EvalResult(checkpoint_on=validation_result['log']['loss'])
         result.log('val_loss', validation_result['log']['loss'], prog_bar=True)
         result.log('val_acc', validation_result['log']['acc'], prog_bar=True)
+
+        if 'nonzeros' in validation_result['log'].keys():
+            result.log(
+                'val_nonzeros',
+                validation_result['log']['nonzeros'],
+                prog_bar=True)
         return result
 
     def test_step(self, batch, batch_nb):
@@ -140,6 +152,12 @@ class SignalGame(pl.LightningModule):
         result = pl.EvalResult()
         result.log('test_loss', test_result['log']['loss'])
         result.log('test_acc', test_result['log']['acc'])
+
+        if 'nonzeros' in test_result['log'].keys():
+            result.log(
+                'test_nonzeros',
+                test_result['log']['nonzeros'],
+                prog_bar=True)
         return result
 
     def configure_optimizers(self):

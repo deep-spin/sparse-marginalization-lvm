@@ -139,6 +139,12 @@ class SSVAE(pl.LightningModule):
             result.log('train_elbo', unsupervised_output['log']['loss'], prog_bar=True)
             result.log('train_acc', unsupervised_output['log']['acc'], prog_bar=True)
 
+            if 'nonzeros' in unsupervised_output['log'].keys():
+                result.log(
+                    'train_nonzeros',
+                    unsupervised_output['log']['nonzeros'],
+                    prog_bar=True)
+
         # Update temperature if Gumbel
         if self.hparams.mode == 'gs':
             self.lvm_method.encoder.update_temperature(
@@ -156,6 +162,12 @@ class SSVAE(pl.LightningModule):
         result = pl.EvalResult(checkpoint_on=validation_result['log']['loss'])
         result.log('val_elbo', validation_result['log']['loss'], prog_bar=True)
         result.log('val_acc', validation_result['log']['acc'], prog_bar=True)
+
+        if 'nonzeros' in validation_result['log'].keys():
+            result.log(
+                'val_nonzeros',
+                validation_result['log']['nonzeros'],
+                prog_bar=True)
         return result
 
     def test_step(self, batch, batch_nb):
@@ -165,6 +177,12 @@ class SSVAE(pl.LightningModule):
         result = pl.EvalResult()
         result.log('test_elbo', test_result['log']['loss'])
         result.log('test_acc', test_result['log']['acc'])
+
+        if 'nonzeros' in test_result['log'].keys():
+            result.log(
+                'test_nonzeros',
+                test_result['log']['nonzeros'],
+                prog_bar=True)
         return result
 
     def configure_optimizers(self):
