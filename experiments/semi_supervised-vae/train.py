@@ -16,11 +16,11 @@ from lvmhelpers.sfe import \
     ReinforceWrapper, ReinforceDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
-from lvmhelpers.utils import DeterministicWrapper
+from lvmhelpers.utils import DeterministicWrapper, populate_common_params
 
-from opts import _populate_cl_params
 from data import get_mnist_dataset_semisupervised, CycleConcatDataset
 from archs import MLPEncoder, MLPDecoder, Classifier, MNISTVAE
+from opts import populate_experiment_params
 
 
 class SSVAE(pl.LightningModule):
@@ -29,18 +29,22 @@ class SSVAE(pl.LightningModule):
             latent_dim,
             slen,
             n_classes,
+            labeled_only,
             mode,
-            baseline_type,
-            topk,
+            entropy_coeff,
+            vocab_size,
+            normalizer,
             gs_tau,
             temperature_decay,
             temperature_update_freq,
             straight_through,
-            normalizer,
+            baseline_type,
+            topk,
+            random_seed,
+            batch_size,
             lr,
             weight_decay,
-            batch_size,
-            labeled_only):
+            optimizer):
         super(SSVAE, self).__init__()
 
         self.save_hyperparameters()
@@ -320,18 +324,22 @@ def get_model(opt):
         latent_dim=8,
         slen=28,
         n_classes=10,
+        labeled_only=opt.labeled_only,
         mode=opt.mode,
-        baseline_type=opt.baseline_type,
-        topk=opt.topk,
+        entropy_coeff=opt.entropy_coeff,
+        vocab_size=opt.latent_size,
+        normalizer=opt.normalizer,
         gs_tau=opt.gs_tau,
         temperature_decay=opt.temperature_decay,
         temperature_update_freq=opt.temperature_update_freq,
         straight_through=opt.straight_through,
-        normalizer=opt.normalizer,
+        baseline_type=opt.baseline_type,
+        topk=opt.topk,
+        random_seed=opt.random_seed,
+        batch_size=opt.batch_size,
         lr=opt.lr,
         weight_decay=opt.weight_decay,
-        batch_size=opt.batch_size,
-        labeled_only=opt.labeled_only)
+        optimizer=opt.optimizer)
 
     if len(opt.warm_start_path) != 0:
         model = model.load_from_checkpoint(
@@ -339,26 +347,31 @@ def get_model(opt):
             latent_dim=8,
             slen=28,
             n_classes=10,
+            labeled_only=opt.labeled_only,
             mode=opt.mode,
-            baseline_type=opt.baseline_type,
-            topk=opt.topk,
+            entropy_coeff=opt.entropy_coeff,
+            vocab_size=opt.latent_size,
+            normalizer=opt.normalizer,
             gs_tau=opt.gs_tau,
             temperature_decay=opt.temperature_decay,
             temperature_update_freq=opt.temperature_update_freq,
             straight_through=opt.straight_through,
-            normalizer=opt.normalizer,
+            baseline_type=opt.baseline_type,
+            topk=opt.topk,
+            random_seed=opt.random_seed,
+            batch_size=opt.batch_size,
             lr=opt.lr,
             weight_decay=opt.weight_decay,
-            batch_size=opt.batch_size,
-            labeled_only=opt.labeled_only)
+            optimizer=opt.optimizer)
 
     return model
 
 
 def main(params):
 
-    parser = argparse.ArgumentParser()
-    arg_parser = _populate_cl_params(parser)
+    arg_parser = argparse.ArgumentParser()
+    arg_parser = populate_experiment_params(arg_parser)
+    arg_parser = populate_common_params(arg_parser)
     opts = arg_parser.parse_args(params)
 
     # fix seed

@@ -55,14 +55,14 @@ class Marginalizer(torch.nn.Module):
 
     def forward(self, encoder_input, decoder_input, labels):
         message, encoder_probs, encoder_entropy = self.encoder(encoder_input)
-        batch_size, vocab_size = encoder_probs.shape
+        batch_size, latent_size = encoder_probs.shape
 
         entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
         if self.training:
             losses = torch.zeros_like(encoder_probs)
             logs_global = None
 
-            for possible_message in range(vocab_size):
+            for possible_message in range(latent_size):
                 if encoder_probs[:, possible_message].sum().detach() != 0:
                     # if it's zero, all batch examples
                     # will be multiplied by zero anyway,
@@ -95,10 +95,10 @@ class Marginalizer(torch.nn.Module):
                 if hasattr(v, 'mean'):
                     logs[k] = logs_global[k]
 
-            # encoder_probs: [batch_size, vocab_size]
-            # losses: [batch_size, vocab_size]
-            # encoder_probs.unsqueeze(1): [batch_size, 1, vocab_size]
-            # losses.unsqueeze(-1): [batch_size, vocab_size, 1]
+            # encoder_probs: [batch_size, latent_size]
+            # losses: [batch_size, latent_size]
+            # encoder_probs.unsqueeze(1): [batch_size, 1, latent_size]
+            # losses.unsqueeze(-1): [batch_size, latent_size, 1]
             # entropy_loss: []
             # full_loss: []
             loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()

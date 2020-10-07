@@ -86,7 +86,7 @@ class SumAndSample(torch.nn.Module):
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_log_prob, encoder_entropy = \
             self.encoder(encoder_input)
-        batch_size, vocab_size = encoder_log_prob.shape
+        batch_size, _ = encoder_log_prob.shape
 
         # entropy component of the final loss, we can
         # compute already but will only use it later on

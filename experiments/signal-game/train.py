@@ -14,38 +14,39 @@ from lvmhelpers.sfe import \
     ReinforceWrapper, ReinforceDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
-from lvmhelpers.utils import DeterministicWrapper
+from lvmhelpers.utils import DeterministicWrapper, populate_common_params
 
 from data import ImageNetFeat, ImagenetLoader
 from archs import Sender, Receiver
-from opts import _populate_cl_params
+from opts import populate_experiment_params
 
 
 class SignalGame(pl.LightningModule):
     def __init__(
             self,
-            root,
-            same,
-            random_seed,
             feat_size,
             embedding_size,
             hidden_size,
-            vocab_size,
             game_size,
             tau_s,
             loss_type,
-            entropy_coeff,
+            root,
+            same,
             mode,
-            baseline_type,
-            topk,
+            entropy_coeff,
+            vocab_size,
+            normalizer,
             gs_tau,
             temperature_decay,
             temperature_update_freq,
             straight_through,
-            normalizer,
+            baseline_type,
+            topk,
+            random_seed,
+            batch_size,
             lr,
             weight_decay,
-            batch_size):
+            optimizer):
         super(SignalGame, self).__init__()
 
         self.save_hyperparameters()
@@ -228,37 +229,39 @@ def loss_nll(_sender_input, _message, _receiver_input, receiver_output, labels):
 
 
 def get_model(opt):
-    feat_size = 4096
     game = SignalGame(
-        opt.root,
-        opt.same,
-        opt.random_seed,
-        feat_size,
-        opt.embedding_size,
-        opt.hidden_size,
-        opt.vocab_size,
-        opt.game_size,
-        opt.tau_s,
-        opt.loss_type,
-        opt.entropy_coeff,
-        opt.mode,
-        opt.baseline_type,
-        opt.topk,
-        opt.gs_tau,
-        opt.temperature_decay,
-        opt.temperature_update_freq,
-        opt.straight_through,
-        opt.normalizer,
-        opt.lr,
-        opt.weight_decay,
-        opt.batch_size)
+        feat_size=4096,
+        embedding_size=opt.embedding_size,
+        hidden_size=opt.hidden_size,
+        game_size=opt.game_size,
+        tau_s=opt.tau_s,
+        loss_type=opt.loss_type,
+        root=opt.root,
+        same=opt.same,
+        mode=opt.mode,
+        entropy_coeff=opt.entropy_coeff,
+        vocab_size=opt.latent_size,
+        normalizer=opt.normalizer,
+        gs_tau=opt.gs_tau,
+        temperature_decay=opt.temperature_decay,
+        temperature_update_freq=opt.temperature_update_freq,
+        straight_through=opt.straight_through,
+        baseline_type=opt.baseline_type,
+        topk=opt.topk,
+        random_seed=opt.random_seed,
+        batch_size=opt.batch_size,
+        lr=opt.lr,
+        weight_decay=opt.weight_decay,
+        optimizer=opt.optimizer)
+
     return game
 
 
 def main(params):
 
-    parser = argparse.ArgumentParser()
-    arg_parser = _populate_cl_params(parser)
+    arg_parser = argparse.ArgumentParser()
+    arg_parser = populate_experiment_params(arg_parser)
+    arg_parser = populate_common_params(arg_parser)
     opts = arg_parser.parse_args(params)
 
     # fix seed
