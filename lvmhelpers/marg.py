@@ -102,7 +102,7 @@ class Marginalizer(torch.nn.Module):
             # entropy_loss: []
             # full_loss: []
             loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
-            full_loss = loss.mean() + entropy_loss
+            full_loss = loss.mean() + entropy_loss.mean()
 
         else:
             decoder_output = self.decoder(message, decoder_input)

@@ -6,6 +6,7 @@
 import torch
 import torch.nn as nn
 from torch.distributions import RelaxedOneHotCategorical
+from torch.distributions import Categorical
 
 
 def gumbel_softmax_sample(
@@ -103,7 +104,9 @@ class GumbelSoftmaxWrapper(nn.Module):
         logits = self.agent(*args, **kwargs)
         sample = gumbel_softmax_sample(
             logits, self.temperature, self.training, self.straight_through)
-        return sample
+        distr = Categorical(logits=logits)
+        entropy = distr.entropy()
+        return sample, logits, entropy
 
     def update_temperature(
             self, current_step, temperature_update_freq, temperature_decay):
@@ -134,17 +137,21 @@ class Gumbel(torch.nn.Module):
         self.decoder_entropy_coeff = decoder_entropy_coeff
 
     def forward(self, encoder_input, decoder_input, labels):
-        message = self.encoder(encoder_input)
-        decoder_output = self.decoder(message, decoder_input)
+        discrete_latent_z, encoder_log_prob, encoder_entropy = self.encoder(encoder_input)
+        decoder_output = self.decoder(discrete_latent_z, decoder_input)
+
+        # entropy component of the final loss, we can
+        # compute already but will only use it later on
+        entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
 
         loss, logs = self.loss(
             encoder_input,
-            message,
+            discrete_latent_z,
             decoder_input,
             decoder_output,
             labels)
 
-        full_loss = loss.mean()
+        full_loss = loss.mean() + entropy_loss
 
         for k, v in logs.items():
             if hasattr(v, 'mean'):

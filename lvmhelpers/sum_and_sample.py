@@ -175,23 +175,27 @@ class SumAndSample(torch.nn.Module):
 
             # restore the log of argmax
             logs = train_logs
-        else:
+
+        with torch.no_grad():
             decoder_output = self.decoder(discrete_latent_z, decoder_input)
-            loss, logs = self.loss(
+            map_loss, map_logs = self.loss(
                 encoder_input,
                 discrete_latent_z,
                 decoder_input,
                 decoder_output,
                 labels)
 
-            for k, v in logs.items():
-                if hasattr(v, 'mean'):
-                    logs[k] = v.mean()
+        for k, v in map_logs.items():
+            if hasattr(v, 'mean'):
+                map_logs[k] = v.mean()
 
-        full_loss = loss.mean() + entropy_loss.mean()
+        if not self.training:
+            loss, logs = map_loss, map_logs
+
+        full_loss = loss.mean() + entropy_loss
 
         logs['baseline'] = torch.zeros(1).to(loss.device)
-        logs['loss'] = loss.mean()
+        logs['loss'] = map_loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
         return {'loss': full_loss, 'log': logs}
