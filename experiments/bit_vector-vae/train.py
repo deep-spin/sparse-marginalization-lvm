@@ -103,7 +103,7 @@ class VAE(pl.LightningModule):
 
         result = pl.TrainResult(minimize=loss)
         elbo = \
-            training_result['log']['loss'] + \
+            - training_result['log']['loss'] + \
             training_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
         result.log(
@@ -134,7 +134,7 @@ class VAE(pl.LightningModule):
         validation_result = self(inf_input, labels)
         result = pl.EvalResult(checkpoint_on=validation_result['log']['loss'])
         elbo = \
-            validation_result['log']['loss'] + \
+            - validation_result['log']['loss'] + \
             validation_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
         result.log(
@@ -156,7 +156,7 @@ class VAE(pl.LightningModule):
         test_result = self(inf_input, labels)
         result = pl.EvalResult()
         elbo = \
-            test_result['log']['loss'] + \
+            - test_result['log']['loss'] + \
             test_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
         result.log(
@@ -227,7 +227,7 @@ def reconstruction_loss(
     lv = F.cross_entropy(
         Xhat_logits, _inf_input.to(dtype=torch.long), reduction="none"
     )
-    return -lv.sum(dim=1), {}
+    return lv.sum(dim=1), {}
 
 
 def get_model(opt):
