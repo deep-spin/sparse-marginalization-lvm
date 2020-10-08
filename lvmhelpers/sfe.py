@@ -233,7 +233,7 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
                 labels)
 
         policy_loss = ((loss.detach() - baseline) * encoder_sample_log_probs).mean()
-        entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
+        entropy_loss = encoder_entropy.mean() * self.encoder_entropy_coeff
 
         full_loss = policy_loss + entropy_loss + loss.mean()
 
@@ -251,4 +251,4 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = decoder_entropy.mean()
 
-        return {'loss': full_loss, 'log': logs}
+        return {'loss': -full_loss, 'log': logs}
