@@ -91,14 +91,13 @@ class VAE(pl.LightningModule):
             loss_fun,
             encoder_entropy_coeff=1.0)
 
-    def forward(self, inf_input, labels):
-        return self.lvm_method(inf_input, torch.zeros_like(inf_input), labels)
+    def forward(self, _inf_input, inf_input):
+        return self.lvm_method(_inf_input, torch.zeros_like(_inf_input), inf_input)
 
     def training_step(self, batch, batch_nb):
-        inf_input, labels = batch
-        if inf_input.dtype == torch.uint8:
-            inf_input = inf_input.to(dtype=torch.float) / 255
-        training_result = self(inf_input, labels)
+        inf_input, _ = batch
+        _inf_input = inf_input.to(dtype=torch.float) / 255
+        training_result = self(_inf_input, inf_input)
         loss = training_result['loss']
 
         result = pl.TrainResult(minimize=loss)
@@ -128,10 +127,9 @@ class VAE(pl.LightningModule):
         return result
 
     def validation_step(self, batch, batch_nb):
-        inf_input, labels = batch
-        if inf_input.dtype == torch.uint8:
-            inf_input = inf_input.to(dtype=torch.float) / 255
-        validation_result = self(inf_input, labels)
+        inf_input, _ = batch
+        _inf_input = inf_input.to(dtype=torch.float) / 255
+        validation_result = self(_inf_input, inf_input)
         result = pl.EvalResult(checkpoint_on=validation_result['log']['loss'])
         elbo = \
             - validation_result['log']['loss'] + \
@@ -150,10 +148,9 @@ class VAE(pl.LightningModule):
         return result
 
     def test_step(self, batch, batch_nb):
-        inf_input, labels = batch
-        if inf_input.dtype == torch.uint8:
-            inf_input = inf_input.to(dtype=torch.float) / 255
-        test_result = self(inf_input, labels)
+        inf_input, _ = batch
+        _inf_input = inf_input.to(dtype=torch.float) / 255
+        test_result = self(_inf_input, inf_input)
         result = pl.EvalResult()
         elbo = \
             - test_result['log']['loss'] + \
@@ -218,14 +215,14 @@ class VAE(pl.LightningModule):
 
 
 def reconstruction_loss(
-        _inf_input,
+        inf_input,
         discrete_latent_z,
         _gen_input,
         gen_output,
         true_labels):
     Xhat_logits = gen_output.permute(0, 2, 1)
     lv = F.cross_entropy(
-        Xhat_logits, _inf_input.to(dtype=torch.long), reduction="none"
+        Xhat_logits, true_labels.to(dtype=torch.long), reduction="none"
     )
     return lv.sum(dim=1), {}
 
