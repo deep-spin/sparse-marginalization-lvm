@@ -74,7 +74,7 @@ class BitVectorReinforceWrapper(nn.Module):
         logits = self.agent(*args, **kwargs)
 
         distr = Bernoulli(logits=logits)
-        entropy = distr.entropy()
+        entropy = distr.entropy().sum(dim=1)
         sample = distr.sample()
 
         return sample, logits, entropy
@@ -217,12 +217,8 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
             labels)
 
         encoder_categorical_helper = Bernoulli(logits=encoder_log_prob)
-        encoder_sample_log_probs = encoder_categorical_helper.log_prob(discrete_latent_z)
-        if len(decoder_log_prob.size()) != 1:
-            decoder_categorical_helper = Bernoulli(logits=decoder_log_prob)
-            decoder_sample_log_probs = decoder_categorical_helper.log_prob(decoder_output)
-        else:
-            decoder_sample_log_probs = decoder_log_prob
+        encoder_sample_log_probs = \
+            encoder_categorical_helper.log_prob(discrete_latent_z).sum(dim=1)
 
         if self.encoder.baseline_type == 'runavg':
             baseline = self.mean_baseline
@@ -236,22 +232,15 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
                 decoder_output,
                 labels)
 
-        policy_loss = (
-            (loss.detach() - baseline) *
-            (encoder_sample_log_probs.sum(dim=1) + decoder_sample_log_probs)
-            ).mean()
-        entropy_loss = -(
-            encoder_entropy.sum(dim=1).mean() *
-            self.encoder_entropy_coeff +
-            decoder_entropy.mean() *
-            self.decoder_entropy_coeff)
+        policy_loss = ((loss.detach() - baseline) * encoder_sample_log_probs).mean()
+        entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
+
+        full_loss = policy_loss + entropy_loss + loss.mean()
 
         if self.training and self.encoder.baseline_type == 'runavg':
             self.n_points += 1.0
             self.mean_baseline += (
                 loss.detach().mean() - self.mean_baseline) / self.n_points
-
-        full_loss = policy_loss + entropy_loss + loss.mean()
 
         for k, v in logs.items():
             if hasattr(v, 'mean'):
@@ -259,7 +248,7 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
 
         logs['baseline'] = self.mean_baseline
         logs['loss'] = loss.mean()
-        logs['encoder_entropy'] = encoder_entropy.sum(dim=1).mean()
+        logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = decoder_entropy.mean()
 
         return {'loss': full_loss, 'log': logs}

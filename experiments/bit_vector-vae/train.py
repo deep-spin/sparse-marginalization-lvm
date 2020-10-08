@@ -9,8 +9,6 @@ from pytorch_lightning import loggers as pl_loggers
 
 from lvmhelpers.marg import \
     ExplicitWrapper, Marginalizer
-from lvmhelpers.sum_and_sample import \
-    SumAndSampleWrapper, SumAndSample
 from lvmhelpers.sfe import \
     BitVectorReinforceWrapper, ReinforceDeterministicWrapper, \
     BitVectorScoreFunctionEstimator
@@ -84,10 +82,6 @@ class VAE(pl.LightningModule):
             inf = ExplicitWrapper(inf, normalizer=self.hparams.normalizer)
             gen = DeterministicWrapper(gen)
             lvm_method = Marginalizer
-        elif self.hparams.mode == 'sumsample':
-            inf = SumAndSampleWrapper(inf, topk=self.hparams.topk)
-            gen = DeterministicWrapper(gen)
-            lvm_method = SumAndSample
         else:
             raise RuntimeError(f"Unknown training mode: {self.hparams.mode}")
 
