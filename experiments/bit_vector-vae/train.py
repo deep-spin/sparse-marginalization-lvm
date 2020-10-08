@@ -117,7 +117,7 @@ class VAE(pl.LightningModule):
         if 'support' in training_result['log'].keys():
             result['train_support'] = training_result['log']['support'].tolist()
             self.log(
-                "train_support", np.median(training_result['log']['support']),
+                "train_support", torch.median(training_result['log']['support']),
                 prog_bar=True, logger=True)
 
         # Update temperature if Gumbel
@@ -165,7 +165,7 @@ class VAE(pl.LightningModule):
         if 'support' in validation_result['log'].keys():
             result['val_support'] = validation_result['log']['support'].tolist()
             self.log(
-                "val_support", np.median(validation_result['log']['support']),
+                "val_support", torch.median(validation_result['log']['support']),
                 prog_bar=True, logger=True)
         return result
 
@@ -202,7 +202,7 @@ class VAE(pl.LightningModule):
         if 'support' in test_result['log'].keys():
             result['test_support'] = test_result['log']['support'].tolist()
             self.log(
-                "test_support", np.median(test_result['log']['support']),
+                "test_support", torch.median(test_result['log']['support']),
                 prog_bar=True, logger=True)
         return result
 
