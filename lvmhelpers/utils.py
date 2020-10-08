@@ -32,6 +32,11 @@ def populate_common_params(
     arg_parser.add_argument('--normalizer', type=str, default='softmax',
                             help='softmax, sparsemax or entmax15')
 
+    # Structured Marginalization
+    arg_parser.add_argument('--topksparse', type=int, default=10,
+                            help="""k in top-k sparsemax. Not to be confused with the --topk option
+                            of the sum&sample estimator""")
+
     # Gumbel-Softmax
     arg_parser.add_argument('--gs_tau', type=float, default=1.0,
                             help='GS temperature')
