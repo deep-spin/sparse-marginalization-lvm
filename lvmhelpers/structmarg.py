@@ -50,7 +50,9 @@ class TopKSparsemaxWrapper(nn.Module):
         if not self.training:
             # get the argmax sample
             sample_idx = scores.argmax(dim=-1)
-            sample_idx = sample_idx + torch.arange(0, batch_size*self.k, self.k)
+            sample_idx = \
+                sample_idx + \
+                torch.arange(0, batch_size*self.k, self.k).to(sample_idx.device)
             sample = bit_vector_z.view(-1, latent_size)[sample_idx]
         else:
             sample = bit_vector_z
