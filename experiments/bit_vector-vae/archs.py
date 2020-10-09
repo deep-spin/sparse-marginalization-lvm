@@ -13,7 +13,6 @@ class MLP(torch.nn.Sequential):
         self.add_module(
             f"layer{n_layers+1}", torch.nn.Linear(dim_hid, dim_out)
         )
-        self.add_module("logsoftmax", torch.nn.LogSoftmax(dim=-1))
 
 
 class CategoricalGenerator(torch.nn.Module):

@@ -92,6 +92,19 @@ class TopKSparsemaxMarg(torch.nn.Module):
             encoder_input_rep = encoder_input.unsqueeze(1).repeat((1, k, 1))
             encoder_input_rep_flat = encoder_input_rep.view(-1, encoder_input.shape[-1])
 
+            # decoder_input: [batch_size, input_size]
+            # decoder_input_rep: [batch_size, k, input_size]
+            # decoder_input_rep_flat: [batch_size * k, input_size]
+            decoder_input_rep = decoder_input.unsqueeze(1).repeat((1, k, 1))
+            decoder_input_rep_flat = decoder_input_rep.view(-1, decoder_input.shape[-1])
+
+            # this label format is specific to VAE...
+            # labels: [batch_size, input_size]
+            # labels_rep: [batch_size, k, input_size]
+            # labels_rep_flat: [batch_size * k, input_size]
+            labels_rep = labels.unsqueeze(1).repeat((1, k, 1))
+            labels_rep_flat = labels_rep.view(-1, labels.shape[-1])
+
             # encoder_probs: [batch_size, k]
             # encoder_probs_flat: [batch_size * k]
             encoder_probs_flat = encoder_probs.view(-1)
@@ -100,6 +113,10 @@ class TopKSparsemaxMarg(torch.nn.Module):
             mask = encoder_probs_flat > 0
             # encoder_input_rep_flat: [<=batch_size * k, input_size]
             encoder_input_rep_flat = encoder_input_rep_flat[mask]
+            # decoder_input_rep_flat: [<=batch_size * k, input_size]
+            decoder_input_rep_flat = decoder_input_rep_flat[mask]
+            # labels_rep_flat: [<=batch_size * k, input_size]
+            labels_rep_flat = labels_rep_flat[mask]
             # encoder_probs_flat: [<=batch_size * k]
             encoder_probs_flat = encoder_probs_flat[mask]
             # bit_vector_z_flat: [<=batch_size * k, latent_size]
@@ -110,11 +127,11 @@ class TopKSparsemaxMarg(torch.nn.Module):
 
             # loss_components: [<=batch_size * k]
             loss_components, logs = self.loss(
-                encoder_input,
+                encoder_input_rep_flat,
                 bit_vector_z_flat,
-                decoder_input,
+                decoder_input_rep_flat,
                 decoder_output,
-                labels)
+                labels_rep_flat)
 
             # loss: []
             loss = (encoder_probs_flat @ loss_components) / batch_size
