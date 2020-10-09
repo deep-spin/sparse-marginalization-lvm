@@ -238,9 +238,7 @@ class SparseMAPMarg(torch.nn.Module):
             if hasattr(v, 'mean'):
                 logs[k] = v.mean()
 
-        logs['baseline'] = torch.zeros(1).to(loss.device)
-        logs['loss'] = loss.mean()
-        logs['encoder_entropy'] = encoder_entropy.mean()
-        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['loss'] = loss.detach()
+        logs['encoder_entropy'] = encoder_entropy.detach()
         logs['support'] = torch.tensor(support).to(loss.device)
         return {'loss': full_loss, 'log': logs}
