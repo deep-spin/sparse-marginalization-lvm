@@ -153,7 +153,7 @@ class TopKSparsemaxMarg(torch.nn.Module):
 
         logs['loss'] = loss.mean().detach()
         logs['encoder_entropy'] = encoder_entropy.detach()
-        logs['support'] = (encoder_probs > 0).sum(dim=-1)
+        logs['support'] = (encoder_probs > 0).sum(dim=-1).to(torch.float)
         return {'loss': full_loss, 'log': logs}
 
 
@@ -240,5 +240,5 @@ class SparseMAPMarg(torch.nn.Module):
 
         logs['loss'] = loss.detach()
         logs['encoder_entropy'] = encoder_entropy.detach()
-        logs['support'] = torch.tensor(support).to(loss.device)
+        logs['support'] = torch.tensor(support).to(torch.float)
         return {'loss': full_loss, 'log': logs}

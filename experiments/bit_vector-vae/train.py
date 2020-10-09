@@ -1,14 +1,11 @@
 import argparse
 import pathlib
 
-import numpy as np
-
 import torch
 import torch.nn.functional as F
 from torchvision import datasets
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
-from pytorch_lightning.callbacks import ModelCheckpoint
 
 from lvmhelpers.structmarg import \
     TopKSparsemaxWrapper, TopKSparsemaxMarg, SparseMAPWrapper, SparseMAPMarg
@@ -109,18 +106,24 @@ class VAE(pl.LightningModule):
         training_result = self(_inf_input, inf_input)
         loss = training_result['loss']
 
-        result = {'loss': loss}
+        result = pl.TrainResult(minimize=loss)
         elbo = \
             - training_result['log']['loss'] + \
             training_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
-        self.log(
-            '-train_elbo', -elbo,
-            on_epoch=True, prog_bar=True, logger=True)
+        result.log(
+            '-train_elbo',
+            -elbo,
+            prog_bar=True, logger=True)
         result['-train_elbo'] = -elbo
 
         if 'support' in training_result['log'].keys():
-            result['train_support'] = training_result['log']['support'].tolist()
+            result.log(
+                'train_support_median', training_result['log']['support'],
+                reduce_fx=torch.median, on_epoch=True)
+            result.log(
+                'train_support_mean', torch.mean(training_result['log']['support']),
+                prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
 
         # Update temperature if Gumbel
         if self.hparams.mode == 'gs':
@@ -128,99 +131,62 @@ class VAE(pl.LightningModule):
                 self.global_step,
                 self.hparams.temperature_update_freq,
                 self.hparams.temperature_decay)
-            self.log(
-                'temperature', self.lvm_method.encoder.temperature,
-                logger=True)
+            result.log(
+                'temperature', self.lvm_method.encoder.temperature)
 
         return result
-
-    def training_epoch_end(self, outs):
-        result = {}
-        for pred in outs:
-            for key, val in pred.items():
-                if key in result:
-                    result[key] += val
-                else:
-                    result[key] = val
-
-        if 'support' in result.keys():
-            self.log(
-                "train_support", np.median(result['train_support']),
-                prog_bar=True, logger=True)
 
     def validation_step(self, batch, batch_nb):
         inf_input, _ = batch
         _inf_input = inf_input.to(dtype=torch.float) / 255
         validation_result = self(_inf_input, inf_input)
-        loss = validation_result['loss']
-        result = {'loss': loss}
+
         elbo = \
             - validation_result['log']['loss'] + \
             validation_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
-        self.log(
-            '-val_elbo',
-            -elbo,
-            prog_bar=True, logger=True)
+        result = pl.EvalResult(checkpoint_on=-elbo)
+        result.log('-val_elbo', -elbo, prog_bar=True)
         result['-val_elbo'] = -elbo
 
         if 'support' in validation_result['log'].keys():
-            result['val_support'] = validation_result['log']['support'].tolist()
+            result.log(
+                'val_support_median', validation_result['log']['support'],
+                reduce_fx=torch.median)
+            result.log(
+                'val_support_mean', torch.mean(validation_result['log']['support']),
+                prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
 
         return result
-
-    def validation_epoch_end(self, outs):
-        result = {}
-        for pred in outs:
-            for key, val in pred.items():
-                if key in result:
-                    result[key] += val
-                else:
-                    result[key] = val
-
-        if 'support' in result.keys():
-            self.log(
-                "val_support", np.median(result['val_support']),
-                prog_bar=True, logger=True)
 
     def test_step(self, batch, batch_nb):
         inf_input, _ = batch
         _inf_input = inf_input.to(dtype=torch.float) / 255
         test_result = self(_inf_input, inf_input)
-        loss = test_result['loss']
-        result = {'loss': loss}
+
         elbo = \
             - test_result['log']['loss'] + \
             test_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
-        self.log(
-            '-test_elbo',
-            -elbo,
-            prog_bar=True, logger=True)
+        result = pl.EvalResult()
+        result.log('-test_elbo', -elbo, prog_bar=True)
         result['-test_elbo'] = -elbo
 
         if 'support' in test_result['log'].keys():
-            result['test_support'] = test_result['log']['support'].tolist()
+            result.log(
+                'test_support_step', test_result['log']['support'],
+                reduce_fx=torch.median)
+            result.log(
+                'test_support_mean', torch.mean(test_result['log']['support']),
+                prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
 
         return result
 
-    def test_epoch_end(self, outs):
-        result = {}
-        for pred in outs:
-            for key, val in pred.items():
-                if key in result:
-                    result[key] += val
-                else:
-                    result[key] = val
-
-        if 'support' in result.keys():
-            self.log(
-                "test_support", np.median(result['test_support']),
-                prog_bar=True, logger=True)
-
     def configure_optimizers(self):
         return torch.optim.Adam(
-            self.parameters(), lr=self.hparams.lr, weight_decay=self.hparams.weight_decay)
+            self.parameters(),
+            lr=self.hparams.lr,
+            weight_decay=self.hparams.weight_decay)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -342,15 +308,8 @@ def main(params):
         'logs/',
         name=model_name)
 
-    checkpoint_callback = ModelCheckpoint(
-        filepath='checkpoints/',
-        verbose=True,
-        monitor='-val_elbo',
-        mode='min')
-
     trainer = pl.Trainer(
         progress_bar_refresh_rate=20,
-        checkpoint_callback=checkpoint_callback,
         logger=tb_logger,
         max_epochs=opts.n_epochs,
         weights_save_path='checkpoints/',
