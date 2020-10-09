@@ -11,7 +11,7 @@ from pytorch_lightning import loggers as pl_loggers
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from lvmhelpers.structmarg import \
-    TopKSparsemaxWrapper, TopKSparsemaxMarg
+    TopKSparsemaxWrapper, TopKSparsemaxMarg, SparseMAPWrapper, SparseMAPMarg
 from lvmhelpers.sfe import \
     BitVectorReinforceWrapper, ReinforceDeterministicWrapper, \
     BitVectorScoreFunctionEstimator
@@ -86,6 +86,11 @@ class VAE(pl.LightningModule):
             inf = TopKSparsemaxWrapper(inf, k=self.hparams.topksparse)
             gen = DeterministicWrapper(gen)
             lvm_method = TopKSparsemaxMarg
+        elif self.hparams.mode == 'sparsemap':
+            inf = SparseMAPWrapper(
+                inf, budget=self.hparams.budget, init=self.hparams.init)
+            gen = DeterministicWrapper(gen)
+            lvm_method = SparseMAPMarg
         else:
             raise RuntimeError(f"Unknown training mode: {self.hparams.mode}")
 

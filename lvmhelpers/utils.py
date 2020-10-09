@@ -36,6 +36,8 @@ def populate_common_params(
     arg_parser.add_argument('--topksparse', type=int, default=10,
                             help="""k in top-k sparsemax. Not to be confused with the --topk option
                             of the sum&sample estimator""")
+    arg_parser.add_argument("--noinit", action="store_true")
+    arg_parser.add_argument("--budget", type=int, default=0)
 
     # Gumbel-Softmax
     arg_parser.add_argument('--gs_tau', type=float, default=1.0,

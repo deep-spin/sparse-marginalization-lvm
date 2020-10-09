@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from entmax import entmax15, sparsemax
+from entmax import sparsemax
 
-# from .sparsemap import bernoulli_smap, budget_smap
+from .sparsemap import bernoulli_smap, budget_smap
 from .pbinary_topk import batched_topk
 
 
@@ -98,7 +98,7 @@ class TopKSparsemaxMarg(torch.nn.Module):
             decoder_input_rep = decoder_input.unsqueeze(1).repeat((1, k, 1))
             decoder_input_rep_flat = decoder_input_rep.view(-1, decoder_input.shape[-1])
 
-            # this label format is specific to VAE...
+            # TODO: this label format is specific to VAE...
             # labels: [batch_size, input_size]
             # labels_rep: [batch_size, k, input_size]
             # labels_rep_flat: [batch_size * k, input_size]
@@ -153,29 +153,51 @@ class TopKSparsemaxMarg(torch.nn.Module):
 
         logs['loss'] = loss.mean().detach()
         logs['encoder_entropy'] = encoder_entropy.detach()
-        logs['support'] = (encoder_probs > 0).sum(dim=-1).detach()
+        logs['support'] = (encoder_probs > 0).sum(dim=-1)
         return {'loss': full_loss, 'log': logs}
 
 
 class SparseMAPWrapper(nn.Module):
     """
     """
-    def __init__(self, agent, normalizer='entmax'):
+    def __init__(self, agent, budget=0, init=False, max_iter=300):
         super(SparseMAPWrapper, self).__init__()
         self.agent = agent
-
-        normalizer_dict = {
-            'softmax': torch.softmax,
-            'sparsemax': sparsemax,
-            'entmax': entmax15}
-        self.normalizer = normalizer_dict[normalizer]
+        self.budget = budget
+        self.init = init
+        self.max_iter = max_iter
 
     def forward(self, *args, **kwargs):
         logits = self.agent(*args, **kwargs)
-        distr = self.normalizer(logits, dim=-1)
-        entropy_distr = entropy(distr)
-        sample = logits.argmax(dim=-1)
-        return sample, distr, entropy_distr
+        batch_size, latent_size = logits.shape
+
+        distr = []
+        sample = []
+        idxs = []
+
+        support = []
+        for k in range(batch_size):
+            zl = logits[k]
+            if self.budget > 0:
+                distri, samplei = budget_smap(
+                    zl, budget=self.budget, init=self.init, max_iter=self.max_iter)
+            else:
+                distri, samplei = bernoulli_smap(
+                    zl, init=self.init, max_iter=self.max_iter)
+            samplei = samplei[distri > 0]
+            distri = distri[distri > 0]
+            supp = len(distri)
+            assert supp > 0
+            sample.append(samplei)
+            distr.append(distri)
+            idxs.extend(supp * [k])
+            support.append(supp)
+
+        sample = torch.cat(sample)
+        distr = torch.cat(distr)
+        entropy_distr = -distr @ torch.log(distr)
+
+        return sample, distr, entropy_distr / batch_size, idxs, support
 
 
 class SparseMAPMarg(torch.nn.Module):
@@ -194,75 +216,31 @@ class SparseMAPMarg(torch.nn.Module):
         self.decoder_entropy_coeff = decoder_entropy_coeff
 
     def forward(self, encoder_input, decoder_input, labels):
-        bit_vector_z, encoder_probs, encoder_entropy = self.encoder(encoder_input)
-        batch_size, latent_size = encoder_probs.shape
+        bit_vector_z, encoder_probs, encoder_entropy, idxs, support = \
+            self.encoder(encoder_input)
+        batch_size = encoder_input.shape[0]
 
-        entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
-        if self.training:
-            losses = torch.zeros_like(encoder_probs)
-            logs_global = None
+        entropy_loss = -(encoder_entropy * self.encoder_entropy_coeff)
 
-            for possible_bit_vector_z in range(latent_size):
-                if encoder_probs[:, possible_bit_vector_z].sum().detach() != 0:
-                    # if it's zero, all batch examples
-                    # will be multiplied by zero anyway,
-                    # so skip computations
-                    possible_bit_vector_z_ = \
-                        possible_bit_vector_z + \
-                        torch.zeros(
-                            batch_size, dtype=torch.long).to(encoder_probs.device)
-                    decoder_output = self.decoder(
-                        possible_bit_vector_z_, decoder_input)
+        decoder_output = self.decoder(bit_vector_z)
 
-                    loss_sum_term, logs = self.loss(
-                        encoder_input,
-                        bit_vector_z,
-                        decoder_input,
-                        decoder_output,
-                        labels)
+        loss_components, logs = self.loss(
+            encoder_input[idxs],
+            bit_vector_z,
+            decoder_input[idxs],
+            decoder_output,
+            labels[idxs])
 
-                    losses[:, possible_bit_vector_z] += loss_sum_term
+        loss = (encoder_probs @ loss_components) / batch_size
+        full_loss = loss + entropy_loss
 
-                    if not logs_global:
-                        logs_global = {k: 0.0 for k in logs.keys()}
-                    for k, v in logs.items():
-                        if hasattr(v, 'mean'):
-                            # expectation of accuracy
-                            logs_global[k] += (
-                                encoder_probs[:, possible_bit_vector_z] * v).mean()
-
-            for k, v in logs.items():
-                if hasattr(v, 'mean'):
-                    logs[k] = logs_global[k]
-
-            # encoder_probs: [batch_size, latent_size]
-            # losses: [batch_size, latent_size]
-            # encoder_probs.unsqueeze(1): [batch_size, 1, latent_size]
-            # losses.unsqueeze(-1): [batch_size, latent_size, 1]
-            # entropy_loss: []
-            # full_loss: []
-            loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
-            full_loss = loss.mean() + entropy_loss.mean()
-
-        else:
-            decoder_output = self.decoder(bit_vector_z, decoder_input)
-            loss, logs = self.loss(
-                encoder_input,
-                bit_vector_z,
-                decoder_input,
-                decoder_output,
-                labels)
-
-            full_loss = loss.mean() + entropy_loss
-
-            for k, v in logs.items():
-                if hasattr(v, 'mean'):
-                    logs[k] = v.mean()
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = v.mean()
 
         logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
-        # TODO: nonzero for every epoch end
-        logs['nonzeros'] = (encoder_probs != 0).sum(-1).to(torch.float).mean()
+        logs['support'] = torch.tensor(support).to(loss.device)
         return {'loss': full_loss, 'log': logs}
