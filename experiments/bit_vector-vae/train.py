@@ -153,7 +153,7 @@ class VAE(pl.LightningModule):
                 reduce_fx=torch.median)
             result.log(
                 'val_support_mean', torch.mean(validation_result['log']['support']),
-                prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
+                reduce_fx=torch.mean, on_epoch=True)
 
         return result
 
@@ -175,7 +175,7 @@ class VAE(pl.LightningModule):
                 reduce_fx=torch.median)
             result.log(
                 'test_support_mean', torch.mean(test_result['log']['support']),
-                prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
+                reduce_fx=torch.mean, on_epoch=True)
 
         return result
 
