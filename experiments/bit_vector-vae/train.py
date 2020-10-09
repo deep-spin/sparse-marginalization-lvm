@@ -122,7 +122,7 @@ class VAE(pl.LightningModule):
                 reduce_fx=torch.median, on_epoch=True, on_step=False)
             result.log(
                 'train_support_mean', torch.mean(training_result['log']['support']),
-                prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
+                prog_bar=True, reduce_fx=torch.mean, on_epoch=True, on_step=False)
 
         # Update temperature if Gumbel
         if self.hparams.mode == 'gs':
@@ -144,8 +144,15 @@ class VAE(pl.LightningModule):
             - validation_result['log']['loss'] + \
             validation_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
+
+        logp_x_bits, logp_x_nats, sample_influence = \
+            self.compute_importance_sampling(
+                validation_result['log']['encoder_bernoull_distr'], inf_input)
+
         result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-val_elbo', -elbo, prog_bar=True)
+        result.log('-val_logp_x_bits', logp_x_bits, prog_bar=True)
+        result.log('-val_logp_x_nats', logp_x_nats, prog_bar=True)
 
         if 'support' in validation_result['log'].keys():
             result.log(
@@ -225,6 +232,59 @@ class VAE(pl.LightningModule):
             shuffle=False,
             num_workers=4,
             pin_memory=True)
+
+    def compute_importance_sampling(self, distr, inf_input):
+        # importance sampling
+        n_samples = 1024
+        # importance_samples: [n_samples, batch_size, nlatents]
+        importance_samples = distr.sample((n_samples,))
+        # logq_z_given_x_importance: [n_samples, batch_size]
+        logq_z_given_x_importance = \
+            distr.log_prob(importance_samples).sum(dim=-1)
+
+        batch_n_samples = 16
+        logp_x_given_z_importance = []
+        for importance_sample_batch in importance_samples.split(batch_n_samples):
+            # Xhat_importance: [batch_n_samples * batch_size, n_features]
+            Xhat_importance, _, _ = self.lvm_method.decoder(importance_sample_batch)
+            # inf_input_repeat: [batch_n_samples * batch_size, n_features]
+            inf_input_repeat = inf_input.repeat(
+                batch_n_samples, 1, 1).view(-1, inf_input.size(-1))
+            # logp_x_given_z_importance: [batch_n_samples, batch_size]
+            logp_x_given_z_importance.append(
+                reconstruction_loss(
+                    inf_input_repeat,
+                    importance_samples,
+                    inf_input_repeat,
+                    Xhat_importance,
+                    inf_input_repeat)[0].view(
+                        batch_n_samples, inf_input.size(0)))
+        # logp_x_given_z_importance: [n_samples, batch_size]
+        logp_x_given_z_importance = torch.cat(logp_x_given_z_importance, dim=0)
+        # logp_z: []
+        logp_z = importance_samples.shape[-1] * torch.log(torch.tensor(0.5))
+        # logp_z: []
+        logp_z = importance_samples.shape[-1] * torch.log(torch.tensor(0.5))
+        # aux will be the log of p(x,z)/q(z|x)
+        # samples are taken from q(z|x) and then we assess this value
+        # and average over all samples
+        # aux: [n_samples, batch_size]
+        aux = (
+            logp_x_given_z_importance
+            + logp_z
+            - logq_z_given_x_importance
+        )
+        # logp_x_importance: [batch_size]
+        logp_x_importance = torch.logsumexp(aux, dim=0) - torch.log(
+            torch.tensor(float(n_samples))
+        )
+
+        logp_x_bits = logp_x_importance.mean(dim=0) / torch.log(torch.tensor(2.0))
+        logp_x_bits = - logp_x_bits / self.hparams.n_features
+        logp_x_nats = logp_x_importance.mean(dim=0)
+        sample_influence = 0.0
+
+        return logp_x_bits, logp_x_nats, sample_influence
 
 
 def reconstruction_loss(

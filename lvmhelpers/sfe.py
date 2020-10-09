@@ -216,14 +216,14 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
             decoder_output,
             labels)
 
-        encoder_categorical_helper = Bernoulli(logits=encoder_log_prob)
+        encoder_bernoull_distr = Bernoulli(logits=encoder_log_prob)
         encoder_sample_log_probs = \
-            encoder_categorical_helper.log_prob(discrete_latent_z).sum(dim=1)
+            encoder_bernoull_distr.log_prob(discrete_latent_z).sum(dim=1)
 
         if self.encoder.baseline_type == 'runavg':
             baseline = self.mean_baseline
         elif self.encoder.baseline_type == 'sample':
-            alt_z_sample = encoder_categorical_helper.sample().detach()
+            alt_z_sample = encoder_bernoull_distr.sample().detach()
             decoder_output, _, _ = self.decoder(alt_z_sample, decoder_input)
             baseline, _ = self.loss(
                 encoder_input,
@@ -250,5 +250,6 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = decoder_entropy.mean()
+        logs['encoder_bernoull_distr'] = encoder_bernoull_distr
 
         return {'loss': full_loss, 'log': logs}
