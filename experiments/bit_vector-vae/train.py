@@ -119,7 +119,7 @@ class VAE(pl.LightningModule):
         if 'support' in training_result['log'].keys():
             result.log(
                 'train_support_median', training_result['log']['support'],
-                reduce_fx=torch.median, on_epoch=True)
+                reduce_fx=torch.median, on_epoch=True, on_step=False)
             result.log(
                 'train_support_mean', torch.mean(training_result['log']['support']),
                 prog_bar=True, reduce_fx=torch.mean, on_epoch=True)
