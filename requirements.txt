@@ -2,7 +2,7 @@ Cython
 entmax
 h5py
 numpy
-pytorch-lightning
+pytorch-lightning==0.9.0
 tensorboard
-torch
-torchvision
+torch==1.6.0
+torchvision==0.7.0
