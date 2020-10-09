@@ -151,8 +151,7 @@ class VAE(pl.LightningModule):
 
         result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-val_elbo', -elbo, prog_bar=True)
-        result.log('-val_logp_x_bits', logp_x_bits, prog_bar=True)
-        result.log('-val_logp_x_nats', logp_x_nats, prog_bar=True)
+        result.log('val_logp_x_bits', logp_x_bits, prog_bar=True)
 
         if 'support' in validation_result['log'].keys():
             result.log(
@@ -260,7 +259,7 @@ class VAE(pl.LightningModule):
                     inf_input_repeat)[0].view(
                         batch_n_samples, inf_input.size(0)))
         # logp_x_given_z_importance: [n_samples, batch_size]
-        logp_x_given_z_importance = torch.cat(logp_x_given_z_importance, dim=0)
+        logp_x_given_z_importance = -torch.cat(logp_x_given_z_importance, dim=0)
         # logp_z: []
         logp_z = importance_samples.shape[-1] * torch.log(torch.tensor(0.5))
         # logp_z: []
