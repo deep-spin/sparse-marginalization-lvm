@@ -115,7 +115,6 @@ class VAE(pl.LightningModule):
             '-train_elbo',
             -elbo,
             prog_bar=True, logger=True)
-        result['-train_elbo'] = -elbo
 
         if 'support' in training_result['log'].keys():
             result.log(
@@ -147,7 +146,6 @@ class VAE(pl.LightningModule):
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
         result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-val_elbo', -elbo, prog_bar=True)
-        result['-val_elbo'] = -elbo
 
         if 'support' in validation_result['log'].keys():
             result.log(
@@ -170,7 +168,6 @@ class VAE(pl.LightningModule):
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
         result = pl.EvalResult()
         result.log('-test_elbo', -elbo, prog_bar=True)
-        result['-test_elbo'] = -elbo
 
         if 'support' in test_result['log'].keys():
             result.log(
