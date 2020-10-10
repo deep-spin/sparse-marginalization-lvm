@@ -47,15 +47,7 @@ class TopKSparsemaxWrapper(nn.Module):
         distr_flat = distr_flat[mask]
         entropy_distr = - distr_flat @ torch.log(distr_flat)
 
-        if not self.training:
-            # get the argmax sample
-            sample_idx = scores.argmax(dim=-1)
-            sample_idx = \
-                sample_idx + \
-                torch.arange(0, batch_size*self.k, self.k).to(sample_idx.device)
-            sample = bit_vector_z.view(-1, latent_size)[sample_idx]
-        else:
-            sample = bit_vector_z
+        sample = bit_vector_z
 
         return sample, distr, entropy_distr / batch_size
 
@@ -82,68 +74,58 @@ class TopKSparsemaxMarg(torch.nn.Module):
         latent_size = bit_vector_z.shape[-1]
 
         entropy_loss = -(encoder_entropy * self.encoder_entropy_coeff)
-        if self.training:
-            # bit_vector_z: [batch_size, k, latent_size]
-            # bit_vector_z_flat: [batch_size * k, latent_size]
-            bit_vector_z_flat = bit_vector_z.view(-1, latent_size)
-            # encoder_input: [batch_size, input_size]
-            # encoder_input_rep: [batch_size, k, input_size]
-            # encoder_input_rep_flat: [batch_size * k, input_size]
-            encoder_input_rep = encoder_input.unsqueeze(1).repeat((1, k, 1))
-            encoder_input_rep_flat = encoder_input_rep.view(-1, encoder_input.shape[-1])
+        # bit_vector_z: [batch_size, k, latent_size]
+        # bit_vector_z_flat: [batch_size * k, latent_size]
+        bit_vector_z_flat = bit_vector_z.view(-1, latent_size)
+        # encoder_input: [batch_size, input_size]
+        # encoder_input_rep: [batch_size, k, input_size]
+        # encoder_input_rep_flat: [batch_size * k, input_size]
+        encoder_input_rep = encoder_input.unsqueeze(1).repeat((1, k, 1))
+        encoder_input_rep_flat = encoder_input_rep.view(-1, encoder_input.shape[-1])
 
-            # decoder_input: [batch_size, input_size]
-            # decoder_input_rep: [batch_size, k, input_size]
-            # decoder_input_rep_flat: [batch_size * k, input_size]
-            decoder_input_rep = decoder_input.unsqueeze(1).repeat((1, k, 1))
-            decoder_input_rep_flat = decoder_input_rep.view(-1, decoder_input.shape[-1])
+        # decoder_input: [batch_size, input_size]
+        # decoder_input_rep: [batch_size, k, input_size]
+        # decoder_input_rep_flat: [batch_size * k, input_size]
+        decoder_input_rep = decoder_input.unsqueeze(1).repeat((1, k, 1))
+        decoder_input_rep_flat = decoder_input_rep.view(-1, decoder_input.shape[-1])
 
-            # TODO: this label format is specific to VAE...
-            # labels: [batch_size, input_size]
-            # labels_rep: [batch_size, k, input_size]
-            # labels_rep_flat: [batch_size * k, input_size]
-            labels_rep = labels.unsqueeze(1).repeat((1, k, 1))
-            labels_rep_flat = labels_rep.view(-1, labels.shape[-1])
+        # TODO: this label format is specific to VAE...
+        # labels: [batch_size, input_size]
+        # labels_rep: [batch_size, k, input_size]
+        # labels_rep_flat: [batch_size * k, input_size]
+        labels_rep = labels.unsqueeze(1).repeat((1, k, 1))
+        labels_rep_flat = labels_rep.view(-1, labels.shape[-1])
 
-            # encoder_probs: [batch_size, k]
-            # encoder_probs_flat: [batch_size * k]
-            encoder_probs_flat = encoder_probs.view(-1)
+        # encoder_probs: [batch_size, k]
+        # encoder_probs_flat: [batch_size * k]
+        encoder_probs_flat = encoder_probs.view(-1)
 
-            # removing components that would end up being zero-ed out
-            mask = encoder_probs_flat > 0
-            # encoder_input_rep_flat: [<=batch_size * k, input_size]
-            encoder_input_rep_flat = encoder_input_rep_flat[mask]
-            # decoder_input_rep_flat: [<=batch_size * k, input_size]
-            decoder_input_rep_flat = decoder_input_rep_flat[mask]
-            # labels_rep_flat: [<=batch_size * k, input_size]
-            labels_rep_flat = labels_rep_flat[mask]
-            # encoder_probs_flat: [<=batch_size * k]
-            encoder_probs_flat = encoder_probs_flat[mask]
-            # bit_vector_z_flat: [<=batch_size * k, latent_size]
-            bit_vector_z_flat = bit_vector_z_flat[mask]
+        # removing components that would end up being zero-ed out
+        mask = encoder_probs_flat > 0
+        # encoder_input_rep_flat: [<=batch_size * k, input_size]
+        encoder_input_rep_flat = encoder_input_rep_flat[mask]
+        # decoder_input_rep_flat: [<=batch_size * k, input_size]
+        decoder_input_rep_flat = decoder_input_rep_flat[mask]
+        # labels_rep_flat: [<=batch_size * k, input_size]
+        labels_rep_flat = labels_rep_flat[mask]
+        # encoder_probs_flat: [<=batch_size * k]
+        encoder_probs_flat = encoder_probs_flat[mask]
+        # bit_vector_z_flat: [<=batch_size * k, latent_size]
+        bit_vector_z_flat = bit_vector_z_flat[mask]
 
-            # decoder_output: [<=batch_size * k, input_size, out_classes]
-            decoder_output = self.decoder(bit_vector_z_flat, decoder_input)
+        # decoder_output: [<=batch_size * k, input_size, out_classes]
+        decoder_output = self.decoder(bit_vector_z_flat, decoder_input)
 
-            # loss_components: [<=batch_size * k]
-            loss_components, logs = self.loss(
-                encoder_input_rep_flat,
-                bit_vector_z_flat,
-                decoder_input_rep_flat,
-                decoder_output,
-                labels_rep_flat)
+        # loss_components: [<=batch_size * k]
+        loss_components, logs = self.loss(
+            encoder_input_rep_flat,
+            bit_vector_z_flat,
+            decoder_input_rep_flat,
+            decoder_output,
+            labels_rep_flat)
 
-            # loss: []
-            loss = (encoder_probs_flat @ loss_components) / batch_size
-
-        else:
-            decoder_output = self.decoder(bit_vector_z, decoder_input)
-            loss, logs = self.loss(
-                encoder_input,
-                bit_vector_z,
-                decoder_input,
-                decoder_output,
-                labels)
+        # loss: []
+        loss = (encoder_probs_flat @ loss_components) / batch_size
 
         full_loss = loss.mean() + entropy_loss
 
@@ -154,6 +136,8 @@ class TopKSparsemaxMarg(torch.nn.Module):
         logs['loss'] = loss.mean().detach()
         logs['encoder_entropy'] = encoder_entropy.detach()
         logs['support'] = (encoder_probs > 0).sum(dim=-1).to(torch.float)
+        logs['distr'] = encoder_probs
+        logs['loss_output'] = loss_components
         return {'loss': full_loss, 'log': logs}
 
 
@@ -241,4 +225,7 @@ class SparseMAPMarg(torch.nn.Module):
         logs['loss'] = loss.detach()
         logs['encoder_entropy'] = encoder_entropy.detach()
         logs['support'] = torch.tensor(support).to(torch.float)
+        logs['distr'] = encoder_probs
+        logs['loss_output'] = loss_components
+        logs['idxs'] = idxs
         return {'loss': full_loss, 'log': logs}

@@ -250,6 +250,6 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = decoder_entropy.mean()
-        logs['encoder_bernoull_distr'] = encoder_bernoull_distr
+        logs['distr'] = encoder_bernoull_distr
 
         return {'loss': full_loss, 'log': logs}

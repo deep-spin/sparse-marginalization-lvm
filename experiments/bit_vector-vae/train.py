@@ -3,6 +3,7 @@ import pathlib
 
 import torch
 import torch.nn.functional as F
+from torch.distributions import Bernoulli
 from torchvision import datasets
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
@@ -69,7 +70,8 @@ class VAE(pl.LightningModule):
         loss_fun = reconstruction_loss
 
         if self.hparams.mode == 'sfe':
-            inf = BitVectorReinforceWrapper(inf, baseline_type=self.hparams.baseline_type)
+            inf = BitVectorReinforceWrapper(
+                inf, baseline_type=self.hparams.baseline_type)
             gen = ReinforceDeterministicWrapper(gen)
             lvm_method = BitVectorScoreFunctionEstimator
         elif self.hparams.mode == 'gs':
@@ -145,9 +147,16 @@ class VAE(pl.LightningModule):
             validation_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
 
+        if (self.current_epoch + 1) % 20 == 0:
+            n_importance_samples = 64
+        else:
+            n_importance_samples = 16
+
         logp_x_bits, logp_x_nats, sample_influence = \
             self.compute_importance_sampling(
-                validation_result['log']['encoder_bernoull_distr'], inf_input)
+                validation_result['log'],
+                inf_input,
+                n_importance_samples)
 
         result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-val_elbo', -elbo, prog_bar=True)
@@ -172,8 +181,16 @@ class VAE(pl.LightningModule):
             - test_result['log']['loss'] + \
             test_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
-        result = pl.EvalResult()
+
+        logp_x_bits, logp_x_nats, sample_influence = \
+            self.compute_importance_sampling(
+                test_result['log'],
+                inf_input,
+                1024)
+
+        result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-test_elbo', -elbo, prog_bar=True)
+        result.log('test_logp_x_bits', logp_x_bits, prog_bar=True)
 
         if 'support' in test_result['log'].keys():
             result.log(
@@ -232,20 +249,30 @@ class VAE(pl.LightningModule):
             num_workers=4,
             pin_memory=True)
 
-    def compute_importance_sampling(self, distr, inf_input):
-        # importance sampling
-        n_samples = 1024
+    def compute_importance_sampling(self, util_dict, inf_input, n_samples):
+
+        distr = util_dict['distr']
+        if self.hparams.mode == 'sparsemap' or self.hparams.mode == 'topksparse':
+            sampling_distr = Bernoulli(
+                probs=torch.full(
+                    (self.hparams.batch_size, self.hparams.latent_size),
+                    0.5).to(inf_input.device))
+        else:
+            sampling_distr = distr
         # importance_samples: [n_samples, batch_size, nlatents]
-        importance_samples = distr.sample((n_samples,))
+        importance_samples = sampling_distr.sample((n_samples,))
         # logq_z_given_x_importance: [n_samples, batch_size]
         logq_z_given_x_importance = \
-            distr.log_prob(importance_samples).sum(dim=-1)
+            sampling_distr.log_prob(importance_samples).sum(dim=-1)
 
         batch_n_samples = 16
         logp_x_given_z_importance = []
         for importance_sample_batch in importance_samples.split(batch_n_samples):
             # Xhat_importance: [batch_n_samples * batch_size, n_features]
-            Xhat_importance, _, _ = self.lvm_method.decoder(importance_sample_batch)
+            if self.hparams.mode == 'sfe':
+                Xhat_importance, _, _ = self.lvm_method.decoder(importance_sample_batch)
+            else:
+                Xhat_importance = self.lvm_method.decoder(importance_sample_batch)
             # inf_input_repeat: [batch_n_samples * batch_size, n_features]
             inf_input_repeat = inf_input.repeat(
                 batch_n_samples, 1, 1).view(-1, inf_input.size(-1))
@@ -257,11 +284,9 @@ class VAE(pl.LightningModule):
                     inf_input_repeat,
                     Xhat_importance,
                     inf_input_repeat)[0].view(
-                        batch_n_samples, inf_input.size(0)))
+                        batch_n_samples, self.hparams.batch_size))
         # logp_x_given_z_importance: [n_samples, batch_size]
         logp_x_given_z_importance = -torch.cat(logp_x_given_z_importance, dim=0)
-        # logp_z: []
-        logp_z = importance_samples.shape[-1] * torch.log(torch.tensor(0.5))
         # logp_z: []
         logp_z = importance_samples.shape[-1] * torch.log(torch.tensor(0.5))
         # aux will be the log of p(x,z)/q(z|x)
@@ -278,10 +303,45 @@ class VAE(pl.LightningModule):
             torch.tensor(float(n_samples))
         )
 
+        sample_influence = logp_x_importance
+
+        if self.hparams.mode == 'sparsemap':
+            # logp_x_deterministic_term: [batch_size]
+            logp_x_deterministic_term = []
+            logp_x_given_z = - util_dict['loss_output']
+            idxs = util_dict['idxs']
+            for k in range(self.hparams.batch_size):
+                logp_x_deterministic_term.append(
+                    torch.logsumexp(
+                        logp_x_given_z[torch.tensor(idxs) == k] + logp_z,  # TODO: right?
+                        dim=0))
+            logp_x_deterministic_term = torch.stack(logp_x_deterministic_term)
+
+            # logp_x_importance: [batch_size]
+            logp_x_importance = torch.logsumexp(
+                torch.stack([logp_x_deterministic_term, logp_x_importance]), dim=0)
+        elif self.hparams.mode == 'topksparse':
+            # need to 'reconstruct' logp_x_given_z since
+            # we were just dealing with nonzeros
+            # logp_x_deterministic_term: [batch_size]
+            mask = distr.view(-1) > 0
+            logp_x_given_z = -torch.ones_like(mask).to(
+                torch.float32
+            ) * float("inf")
+            logp_x_given_z = logp_x_given_z.masked_scatter(
+                mask, -util_dict['loss_output']).view(distr.shape)
+            logp_x_deterministic_term = torch.logsumexp(
+                logp_x_given_z + logp_z, dim=-1
+            )
+            # logp_x_importance: [batch_size]
+            logp_x_importance = torch.logsumexp(
+                torch.stack([logp_x_deterministic_term, logp_x_importance]), dim=0)
+        else:
+            sample_influence = 0.0
+
         logp_x_bits = logp_x_importance.mean(dim=0) / torch.log(torch.tensor(2.0))
         logp_x_bits = - logp_x_bits / self.hparams.n_features
         logp_x_nats = logp_x_importance.mean(dim=0)
-        sample_influence = 0.0
 
         return logp_x_bits, logp_x_nats, sample_influence
 
