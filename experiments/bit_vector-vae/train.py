@@ -238,12 +238,11 @@ class VAE(pl.LightningModule):
 
     def test_dataloader(self):
         return torch.utils.data.DataLoader(
-            torch.utils.data.Subset(
-                datasets.FashionMNIST(
-                    'data/bit_vector-vae/fmnist_data/',
-                    train=False,
-                    download=True,
-                    transform=transform)),
+            datasets.FashionMNIST(
+                'data/bit_vector-vae/fmnist_data/',
+                train=False,
+                download=True,
+                transform=transform),
             batch_size=self.hparams.batch_size,
             shuffle=False,
             num_workers=4,
@@ -255,7 +254,7 @@ class VAE(pl.LightningModule):
         if self.hparams.mode == 'sparsemap' or self.hparams.mode == 'topksparse':
             sampling_distr = Bernoulli(
                 probs=torch.full(
-                    (self.hparams.batch_size, self.hparams.latent_size),
+                    (inf_input.size(0), self.hparams.latent_size),
                     0.5).to(inf_input.device))
         else:
             sampling_distr = distr
@@ -284,7 +283,7 @@ class VAE(pl.LightningModule):
                     inf_input_repeat,
                     Xhat_importance,
                     inf_input_repeat)[0].view(
-                        batch_n_samples, self.hparams.batch_size))
+                        batch_n_samples, inf_input.size(0)))
         # logp_x_given_z_importance: [n_samples, batch_size]
         logp_x_given_z_importance = -torch.cat(logp_x_given_z_importance, dim=0)
         # logp_z: []
@@ -364,7 +363,7 @@ def get_model(opt):
     hidden_size = 128
     out_rank = 5
     out_classes = 256
-    game = VAE(
+    model = VAE(
         n_features=n_features,
         hidden_size=hidden_size,
         out_rank=out_rank,
@@ -388,7 +387,7 @@ def get_model(opt):
         weight_decay=opt.weight_decay,
         optimizer=opt.optimizer)
 
-    return game
+    return model
 
 
 def main(params):
@@ -402,7 +401,8 @@ def main(params):
     pl.seed_everything(opts.random_seed)
 
     pathlib.Path(
-            'data/bit_vector-vae/fmnist_data/').mkdir(parents=True, exist_ok=True)
+            'data/bit_vector-vae/fmnist_data/').mkdir(
+                parents=True, exist_ok=True)
 
     bit_vector_vae = get_model(opts)
 
@@ -424,6 +424,8 @@ def main(params):
         'logs/',
         name=model_name)
 
+    tb_logger.log_hyperparams(opts, metrics=None)
+
     trainer = pl.Trainer(
         progress_bar_refresh_rate=20,
         logger=tb_logger,
@@ -433,6 +435,7 @@ def main(params):
         gpus=1 if torch.cuda.is_available() else 0,
         resume_from_checkpoint=opts.load_from_checkpoint,
         deterministic=True)
+
     trainer.fit(bit_vector_vae)
 
 
