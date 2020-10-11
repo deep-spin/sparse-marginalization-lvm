@@ -210,7 +210,6 @@ class BitVectorVIMCO(torch.nn.Module):
         log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
 
         # Importance weights: w
-        # (warning: cross your fingers ;p)
         w = log_w.exp()
 
         # Generative gradient surrogate ​ # The learning signal (L)
@@ -270,7 +269,7 @@ class BitVectorVIMCO(torch.nn.Module):
             if hasattr(v, 'mean'):
                 logs[k] = v.mean()
 
-        logs['loss'] = loss.mean() / K
+        logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['distr'] = encoder_bernoull_distr
 
