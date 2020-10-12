@@ -43,6 +43,7 @@ class VAE(pl.LightningModule):
             temperature_update_freq,
             straight_through,
             baseline_type,
+            vimco_k,
             topk,
             random_seed,
             batch_size,
@@ -77,7 +78,7 @@ class VAE(pl.LightningModule):
             gen = SFEDeterministicWrapper(gen)
             lvm_method = BitVectorScoreFunctionEstimator
         elif self.hparams.mode == 'vimco':
-            inf = BitVectorVIMCOWrapper(inf, k=5)
+            inf = BitVectorVIMCOWrapper(inf, k=self.hparams.vimco_k)
             gen = DeterministicWrapper(gen)
             lvm_method = BitVectorVIMCO
         elif self.hparams.mode == 'gs':
@@ -386,6 +387,7 @@ def get_model(opt):
         temperature_update_freq=opt.temperature_update_freq,
         straight_through=opt.straight_through,
         baseline_type=opt.baseline_type,
+        vimco_k=opt.vimco_k,
         topk=opt.topk,
         random_seed=opt.random_seed,
         batch_size=opt.batch_size,

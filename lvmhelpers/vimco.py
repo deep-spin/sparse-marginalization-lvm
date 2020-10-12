@@ -23,10 +23,10 @@ class VIMCOWrapper(nn.Module):
     >>> (entropy > 0).all().item()
     1
     """
-    def __init__(self, agent, baseline_type):
+    def __init__(self, agent, k=5):
         super(VIMCOWrapper, self).__init__()
         self.agent = agent
-        self.baseline_type = baseline_type
+        self.k = k
 
     def forward(self, *args, **kwargs):
         logits = self.agent(*args, **kwargs)
@@ -35,7 +35,7 @@ class VIMCOWrapper(nn.Module):
         entropy = distr.entropy()
 
         if self.training:
-            sample = distr.sample()
+            sample = distr.sample((self.k, ))
         else:
             sample = logits.argmax(dim=-1)
 
@@ -62,61 +62,116 @@ class VIMCO(torch.nn.Module):
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_log_prob, encoder_entropy = \
             self.encoder(encoder_input)
-        decoder_output, decoder_log_prob, decoder_entropy = \
-            self.decoder(discrete_latent_z, decoder_input)
+        batch_size, latent_size = encoder_log_prob.shape
+        if self.training:
+            K, _ = discrete_latent_z.shape
+        else:
+            discrete_latent_z = discrete_latent_z.unsqueeze(0)
+            K = 1
+
+        encoder_input_repeat = \
+            encoder_input.repeat(
+                K, *torch.ones(len(encoder_input.shape), dtype=torch.long).tolist()
+                ).view(-1, *encoder_input.shape[1:])
+        decoder_input_repeat = \
+            decoder_input.repeat(
+                K, *torch.ones(len(decoder_input.shape), dtype=torch.long).tolist()
+                ).view(-1, *decoder_input.shape[1:])
+        labels_repeat = \
+            labels.repeat(
+                K, *torch.ones(len(labels.shape), dtype=torch.long).tolist()
+                ).view(-1, *labels.shape[1:])
+
+        decoder_output = self.decoder(
+            discrete_latent_z.reshape(-1), decoder_input_repeat)
 
         loss, logs = self.loss(
-            encoder_input,
-            discrete_latent_z,
-            decoder_input,
+            encoder_input_repeat,
+            discrete_latent_z.reshape(-1),
+            decoder_input_repeat,
             decoder_output,
-            labels)
+            labels_repeat)
 
-        encoder_categorical_helper = Categorical(logits=encoder_log_prob)
-        encoder_sample_log_probs = encoder_categorical_helper.log_prob(discrete_latent_z)
-        if len(decoder_log_prob.size()) != 1:
-            decoder_categorical_helper = Categorical(logits=decoder_log_prob)
-            decoder_sample_log_probs = decoder_categorical_helper.log_prob(decoder_output)
-        else:
-            decoder_sample_log_probs = decoder_log_prob
+        encoder_categorical_distr = Categorical(logits=encoder_log_prob)
+        encoder_sample_log_probs = \
+            encoder_categorical_distr.log_prob(discrete_latent_z)
 
-        if self.encoder.baseline_type == 'runavg':
-            baseline = self.mean_baseline
-        elif self.encoder.baseline_type == 'sample':
-            alt_z_sample = encoder_categorical_helper.sample().detach()
-            decoder_output, _, _ = self.decoder(alt_z_sample, decoder_input)
-            baseline, _ = self.loss(
-                encoder_input,
-                alt_z_sample,
-                decoder_input,
-                decoder_output,
-                labels)
+        logp = - loss + torch.log(1 / torch.tensor(latent_size, dtype=torch.float))
 
-        policy_loss = (
-            (loss.detach() - baseline) *
-            (encoder_sample_log_probs + decoder_sample_log_probs)
-            ).mean()
-        entropy_loss = -(
-            encoder_entropy.mean() *
-            self.encoder_entropy_coeff +
-            decoder_entropy.mean() *
-            self.decoder_entropy_coeff)
+        # Log ratios: log r(x,z)
+        # [B, K]
+        log_p = logp.view(batch_size, -1)
+        log_q = encoder_sample_log_probs.transpose(0, 1)
+        log_r = log_p - log_q
 
-        if self.training and self.encoder.baseline_type == 'runavg':
-            self.n_points += 1.0
-            self.mean_baseline += (
-                loss.detach().mean() - self.mean_baseline) / self.n_points
+        # Log importance weights: log w
+        # (all computed in log space)
+        # [B, K]
+        log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
 
-        full_loss = policy_loss + entropy_loss + loss.mean()
+        # Importance weights: w
+        w = log_w.exp()
+
+        # Generative gradient surrogate ​ # The learning signal (L)
+        # is just the importance sampling estimate of log likelihood.
+        # Its gradient with respect to the generative parameters is all
+        # we need to update the generative net. Note I detach log_q to
+        # make sure I have a surrogate for the generative gradient only
+
+        # [B]
+        L = (log_p - log_q.detach()).logsumexp(-1) - np.log(K)
+        gen_grad_surrogate = L
+
+        # Proposal gradient surrogate
+
+        # part 2 (the entropy part)
+        # [B]
+        inf_grad_surrogate_entropy = (- w.detach() * log_q).sum(-1)
+
+        # part 1 (the SFE-looking part)
+        # I will assume the original paper used c = 0
+        # []
+        c = 0
+
+        # Average log ratio (keeping the kth term out)
+        # [B, K]
+        log_a = (log_r.sum(-1).unsqueeze(-1) - log_r) / (K - 1)
+
+        # Here we make b, which is a sample specific baseline, thus
+        # with shape [B, K]
+
+        # Smart trick: make log_r [B,K,1], then make log_a [B,K,K] by
+        # placing log_a - log_r in the diagonal, then sum the two
+        # things, we end up with [B,K,K] where in the diagonal we have
+        # log_a (the k-exclusive combination)
+        # [B, K, K]
+        # note how log_r and -log_r cancel out in the diagonal :)
+        b = log_r.unsqueeze(-1) + torch.diag_embed(log_a - log_r)
+        # [B, K]
+        b = b.logsumexp(-1) - np.log(K)
+
+        # [B, K]
+        centred_L = (L.unsqueeze(-1) - b - c)
+
+        inf_grad_surrogate_sfe = centred_L.detach() * log_q
+        # [B]
+        inf_grad_surrogate_sfe = inf_grad_surrogate_sfe.sum(-1)
+
+        # sfe surrogate
+        # Switch to minimisation mode
+        # []
+        full_loss = - (
+            gen_grad_surrogate +
+            inf_grad_surrogate_entropy * self.encoder_entropy_coeff +
+            inf_grad_surrogate_sfe).mean(dim=0)
 
         for k, v in logs.items():
             if hasattr(v, 'mean'):
                 logs[k] = v.mean()
 
-        logs['baseline'] = self.mean_baseline
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
-        logs['decoder_entropy'] = decoder_entropy.mean()
+        logs['distr'] = encoder_categorical_distr
 
         return {'loss': full_loss, 'log': logs}
 
@@ -185,18 +240,26 @@ class BitVectorVIMCO(torch.nn.Module):
             batch_size, latent_size = discrete_latent_z.shape
             discrete_latent_z = discrete_latent_z.unsqueeze(0)
             K = 1
-        decoder_output = self.decoder(
-            discrete_latent_z.view(-1, latent_size), decoder_input)
 
         encoder_input_repeat = \
-            encoder_input.repeat(K, 1, 1).view(-1, encoder_input.size(-1))
+            encoder_input.repeat(
+                K, *torch.ones(len(encoder_input.shape), dtype=torch.long).tolist()
+                ).view(-1, *encoder_input.shape[1:])
         decoder_input_repeat = \
-            decoder_input.repeat(K, 1, 1).view(-1, decoder_input.size(-1))
+            decoder_input.repeat(
+                K, *torch.ones(len(decoder_input.shape), dtype=torch.long).tolist()
+                ).view(-1, *decoder_input.shape[1:])
         labels_repeat = \
-            labels.repeat(K, 1, 1).view(-1, labels.size(-1))
+            labels.repeat(
+                K, *torch.ones(len(labels.shape), dtype=torch.long).tolist()
+                ).view(-1, *labels.shape[1:])
+
+        decoder_output = self.decoder(
+            discrete_latent_z.reshape(-1, latent_size), decoder_input_repeat)
+
         loss, logs = self.loss(
             encoder_input_repeat,
-            discrete_latent_z.view(-1, latent_size),
+            discrete_latent_z.reshape(-1, latent_size),
             decoder_input_repeat,
             decoder_output,
             labels_repeat)

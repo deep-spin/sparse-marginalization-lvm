@@ -54,6 +54,10 @@ def populate_common_params(
     arg_parser.add_argument('--baseline_type', type=str, default='runavg',
                             help='runavg or sample')
 
+    # VIMCO
+    arg_parser.add_argument('--vimco_k', type=int, default=5,
+                            help="""number of samples in VIMCO""")
+
     # sum and sample
     arg_parser.add_argument('--topk', type=int, default=1,
                             help="""number of classes summed over

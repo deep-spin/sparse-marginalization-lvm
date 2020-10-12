@@ -12,6 +12,8 @@ from lvmhelpers.sum_and_sample import \
     SumAndSampleWrapper, SumAndSample
 from lvmhelpers.sfe import \
     SFEWrapper, SFEDeterministicWrapper, ScoreFunctionEstimator
+from lvmhelpers.vimco import \
+    VIMCOWrapper, VIMCO
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -41,6 +43,7 @@ class SignalGame(pl.LightningModule):
             temperature_update_freq,
             straight_through,
             baseline_type,
+            vimco_k,
             topk,
             random_seed,
             batch_size,
@@ -80,6 +83,10 @@ class SignalGame(pl.LightningModule):
             else:
                 receiver = SFEDeterministicWrapper(receiver)
             lvm_method = ScoreFunctionEstimator
+        elif self.hparams.mode == 'vimco':
+            sender = VIMCOWrapper(sender, k=self.hparams.vimco_k)
+            receiver = DeterministicWrapper(receiver)
+            lvm_method = VIMCO
         elif self.hparams.mode == 'gs':
             sender = GumbelSoftmaxWrapper(
                 sender,
@@ -247,6 +254,7 @@ def get_model(opt):
         temperature_update_freq=opt.temperature_update_freq,
         straight_through=opt.straight_through,
         baseline_type=opt.baseline_type,
+        vimco_k=opt.vimco_k,
         topk=opt.topk,
         random_seed=opt.random_seed,
         batch_size=opt.batch_size,
