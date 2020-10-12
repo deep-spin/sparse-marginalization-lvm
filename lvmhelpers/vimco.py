@@ -262,7 +262,7 @@ class BitVectorVIMCO(torch.nn.Module):
         # []
         full_loss = - (
             gen_grad_surrogate +
-            inf_grad_surrogate_entropy +
+            inf_grad_surrogate_entropy * self.encoder_entropy_coeff +
             inf_grad_surrogate_reinforce).mean(dim=0)
 
         for k, v in logs.items():
