@@ -14,7 +14,7 @@ from lvmhelpers.sfe import \
     BitVectorReinforceWrapper, ReinforceDeterministicWrapper, \
     BitVectorScoreFunctionEstimator
 from lvmhelpers.gumbel import \
-    GumbelSoftmaxWrapper, Gumbel
+    BitVectorGumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.vimco import \
     BitVectorVIMCOWrapper, BitVectorVIMCO
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -81,7 +81,7 @@ class VAE(pl.LightningModule):
             gen = DeterministicWrapper(gen)
             lvm_method = BitVectorVIMCO
         elif self.hparams.mode == 'gs':
-            inf = GumbelSoftmaxWrapper(
+            inf = BitVectorGumbelSoftmaxWrapper(
                 inf,
                 temperature=self.hparams.gs_tau,
                 straight_through=self.hparams.straight_through)

@@ -5,8 +5,8 @@
 
 import torch
 import torch.nn as nn
-from torch.distributions import RelaxedOneHotCategorical
-from torch.distributions import Categorical
+from torch.distributions import RelaxedOneHotCategorical, RelaxedBernoulli
+from torch.distributions import Categorical, Bernoulli
 
 
 def gumbel_softmax_sample(
@@ -37,23 +37,24 @@ def gumbel_softmax_sample(
     return sample
 
 
-class GumbelSoftmaxLayer(nn.Module):
-    def __init__(self,
-                 temperature: float = 1.0,
-                 trainable_temperature: bool = False,
-                 straight_through: bool = False):
-        super(GumbelSoftmaxLayer, self).__init__()
-        self.straight_through = straight_through
+def gumbel_softmax_bit_vector_sample(
+        logits: torch.Tensor,
+        temperature: float = 1.0,
+        training: bool = True,
+        straight_through: bool = False):
 
-        if not trainable_temperature:
-            self.temperature = temperature
-        else:
-            self.temperature = torch.nn.Parameter(
-                torch.tensor([temperature]), requires_grad=True)
+    if not training:
+        argmax = (logits > 0).to(torch.float)
+        return argmax
 
-    def forward(self, logits: torch.Tensor):
-        return gumbel_softmax_sample(
-            logits, self.temperature, self.training, self.straight_through)
+    sample = RelaxedBernoulli(
+        logits=logits, temperature=temperature).rsample()
+
+    if straight_through:
+        hard_sample = (logits > 0).to(torch.float)
+        sample = sample + (hard_sample - sample).detach()
+
+    return sample
 
 
 class GumbelSoftmaxWrapper(nn.Module):
@@ -100,11 +101,13 @@ class GumbelSoftmaxWrapper(nn.Module):
             self.temperature = torch.nn.Parameter(
                 torch.tensor([temperature]), requires_grad=True)
 
+        self.distr_type = Categorical
+
     def forward(self, *args, **kwargs):
         logits = self.agent(*args, **kwargs)
         sample = gumbel_softmax_sample(
             logits, self.temperature, self.training, self.straight_through)
-        distr = Categorical(logits=logits)
+        distr = self.distr_type(logits=logits)
         entropy = distr.entropy()
         return sample, logits, entropy
 
@@ -161,5 +164,35 @@ class Gumbel(torch.nn.Module):
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = torch.zeros(1).to(loss.device)
         logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
-
+        logs['distr'] = self.encoder.distr_type(logits=encoder_log_prob)
         return {'loss': full_loss, 'log': logs}
+
+
+class BitVectorGumbelSoftmaxWrapper(GumbelSoftmaxWrapper):
+    def __init__(self,
+                 agent,
+                 temperature=1.0,
+                 trainable_temperature=False,
+                 straight_through=False):
+        """
+        :param agent: The agent to be wrapped. agent.forward() has to output
+            log-probabilities over the vocabulary
+        :param temperature: The temperature of the Gumbel Softmax distribution
+        :param trainable_temperature: If set to True, the temperature becomes
+            a trainable parameter of the model
+        :params straight_through: Whether straigh-through Gumbel Softmax is used
+        """
+        super(BitVectorGumbelSoftmaxWrapper, self).__init__(
+            agent,
+            temperature,
+            trainable_temperature,
+            straight_through)
+        self.distr_type = Bernoulli
+
+    def forward(self, *args, **kwargs):
+        logits = self.agent(*args, **kwargs)
+        sample = gumbel_softmax_bit_vector_sample(
+            logits, self.temperature, self.training, self.straight_through)
+        distr = self.distr_type(logits=logits)
+        entropy = distr.entropy().sum(dim=-1)
+        return sample, logits, entropy
