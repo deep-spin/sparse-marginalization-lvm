@@ -150,7 +150,11 @@ class BitVectorVIMCOWrapper(nn.Module):
 
         distr = Bernoulli(logits=logits)
         entropy = distr.entropy().sum(dim=1)
-        sample = distr.sample((self.k, ))
+
+        if self.training:
+            sample = distr.sample((self.k, ))
+        else:
+            sample = (logits > 0).to(torch.float)
 
         return sample, logits, entropy
 
@@ -175,7 +179,12 @@ class BitVectorVIMCO(torch.nn.Module):
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_log_prob, encoder_entropy = \
             self.encoder(encoder_input)
-        K, batch_size, latent_size = discrete_latent_z.shape
+        if self.training:
+            K, batch_size, latent_size = discrete_latent_z.shape
+        else:
+            batch_size, latent_size = discrete_latent_z.shape
+            discrete_latent_z = discrete_latent_z.unsqueeze(0)
+            K = 1
         decoder_output = self.decoder(
             discrete_latent_z.view(-1, latent_size), decoder_input)
 
@@ -187,7 +196,7 @@ class BitVectorVIMCO(torch.nn.Module):
             labels.repeat(K, 1, 1).view(-1, labels.size(-1))
         loss, logs = self.loss(
             encoder_input_repeat,
-            discrete_latent_z,
+            discrete_latent_z.view(-1, latent_size),
             decoder_input_repeat,
             decoder_output,
             labels_repeat)
