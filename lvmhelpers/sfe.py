@@ -8,9 +8,9 @@ import torch.nn as nn
 from torch.distributions import Categorical, Bernoulli
 
 
-class ReinforceWrapper(nn.Module):
+class SFEWrapper(nn.Module):
     """
-    Reinforce Wrapper for an agent. Assumes that the during the forward,
+    SFE Wrapper for an agent. Assumes that the during the forward,
     the wrapped agent returns log-probabilities over the potential outputs.
     During training, the wrapper
     transforms them into a tuple of (sample from the multinomial,
@@ -18,7 +18,7 @@ class ReinforceWrapper(nn.Module):
     Eval-time the sample is replaced with argmax.
 
     >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
-    >>> agent = ReinforceWrapper(agent)
+    >>> agent = SFEWrapper(agent)
     >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
     >>> sample.size()
     torch.Size([4])
@@ -28,7 +28,7 @@ class ReinforceWrapper(nn.Module):
     1
     """
     def __init__(self, agent, baseline_type):
-        super(ReinforceWrapper, self).__init__()
+        super(SFEWrapper, self).__init__()
         self.agent = agent
         self.baseline_type = baseline_type
 
@@ -46,49 +46,15 @@ class ReinforceWrapper(nn.Module):
         return sample, logits, entropy
 
 
-class BitVectorReinforceWrapper(nn.Module):
-    """
-    Reinforce Wrapper for an agent. Assumes that the during the forward,
-    the wrapped agent returns log-probabilities over the potential outputs.
-    During training, the wrapper
-    transforms them into a tuple of (sample from the multinomial,
-    log-prob of the sample, entropy for the multinomial).
-    Eval-time the sample is replaced with argmax.
-
-    >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
-    >>> agent = BitVectorReinforceWrapper(agent)
-    >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
-    >>> sample.size()
-    torch.Size([4])
-    >>> (log_prob < 0).all().item()
-    1
-    >>> (entropy > 0).all().item()
-    1
-    """
-    def __init__(self, agent, baseline_type):
-        super(BitVectorReinforceWrapper, self).__init__()
-        self.agent = agent
-        self.baseline_type = baseline_type
-
-    def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
-
-        distr = Bernoulli(logits=logits)
-        entropy = distr.entropy().sum(dim=1)
-        sample = distr.sample()
-
-        return sample, logits, entropy
-
-
-class ReinforceDeterministicWrapper(nn.Module):
+class SFEDeterministicWrapper(nn.Module):
     """
     Simple wrapper that makes a deterministic agent (without sampling)
-    compatible with Reinforce-based game, by
+    compatible with SFE-based game, by
     adding zero log-probability and entropy values to the output.
     No sampling is run on top of the wrapped agent,
     it is passed as is.
     >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
-    >>> agent = ReinforceDeterministicWrapper(agent)
+    >>> agent = SFEDeterministicWrapper(agent)
     >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
     >>> sample.size()
     torch.Size([4, 3])
@@ -98,7 +64,7 @@ class ReinforceDeterministicWrapper(nn.Module):
     1
     """
     def __init__(self, agent):
-        super(ReinforceDeterministicWrapper, self).__init__()
+        super(SFEDeterministicWrapper, self).__init__()
         self.agent = agent
 
     def forward(self, *args, **kwargs):
@@ -184,6 +150,44 @@ class ScoreFunctionEstimator(torch.nn.Module):
         logs['decoder_entropy'] = decoder_entropy.mean()
 
         return {'loss': full_loss, 'log': logs}
+
+
+class BitVectorSFEWrapper(nn.Module):
+    """
+    SFE Wrapper for an agent. Assumes that the during the forward,
+    the wrapped agent returns log-probabilities over the potential outputs.
+    During training, the wrapper
+    transforms them into a tuple of (sample from the multinomial,
+    log-prob of the sample, entropy for the multinomial).
+    Eval-time the sample is replaced with argmax.
+
+    >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
+    >>> agent = BitVectorSFEWrapper(agent)
+    >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
+    >>> sample.size()
+    torch.Size([4])
+    >>> (log_prob < 0).all().item()
+    1
+    >>> (entropy > 0).all().item()
+    1
+    """
+    def __init__(self, agent, baseline_type):
+        super(BitVectorSFEWrapper, self).__init__()
+        self.agent = agent
+        self.baseline_type = baseline_type
+
+    def forward(self, *args, **kwargs):
+        logits = self.agent(*args, **kwargs)
+
+        distr = Bernoulli(logits=logits)
+        entropy = distr.entropy().sum(dim=1)
+
+        if self.training:
+            sample = distr.sample()
+        else:
+            sample = (logits > 0).to(torch.float)
+
+        return sample, logits, entropy
 
 
 class BitVectorScoreFunctionEstimator(torch.nn.Module):

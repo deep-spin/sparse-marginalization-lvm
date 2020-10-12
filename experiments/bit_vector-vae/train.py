@@ -11,7 +11,7 @@ from pytorch_lightning import loggers as pl_loggers
 from lvmhelpers.structmarg import \
     TopKSparsemaxWrapper, TopKSparsemaxMarg, SparseMAPWrapper, SparseMAPMarg
 from lvmhelpers.sfe import \
-    BitVectorReinforceWrapper, ReinforceDeterministicWrapper, \
+    BitVectorSFEWrapper, SFEDeterministicWrapper, \
     BitVectorScoreFunctionEstimator
 from lvmhelpers.gumbel import \
     BitVectorGumbelSoftmaxWrapper, Gumbel
@@ -72,9 +72,9 @@ class VAE(pl.LightningModule):
         loss_fun = reconstruction_loss
 
         if self.hparams.mode == 'sfe':
-            inf = BitVectorReinforceWrapper(
+            inf = BitVectorSFEWrapper(
                 inf, baseline_type=self.hparams.baseline_type)
-            gen = ReinforceDeterministicWrapper(gen)
+            gen = SFEDeterministicWrapper(gen)
             lvm_method = BitVectorScoreFunctionEstimator
         elif self.hparams.mode == 'vimco':
             inf = BitVectorVIMCOWrapper(inf, k=5)

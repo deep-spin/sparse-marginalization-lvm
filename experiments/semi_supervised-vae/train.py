@@ -13,7 +13,7 @@ from lvmhelpers.marg import \
 from lvmhelpers.sum_and_sample import \
     SumAndSampleWrapper, SumAndSample
 from lvmhelpers.sfe import \
-    ReinforceWrapper, ReinforceDeterministicWrapper, ScoreFunctionEstimator
+    SFEWrapper, SFEDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -70,10 +70,10 @@ class SSVAE(pl.LightningModule):
         loss_fun = get_unsupervised_loss
 
         if self.hparams.mode == 'sfe':
-            classifier_net = ReinforceWrapper(
+            classifier_net = SFEWrapper(
                 classifier_net,
                 baseline_type=self.hparams.baseline_type)
-            gaussian_vae = ReinforceDeterministicWrapper(gaussian_vae)
+            gaussian_vae = SFEDeterministicWrapper(gaussian_vae)
             lvm_method = ScoreFunctionEstimator
         elif self.hparams.mode == 'gs':
             classifier_net = GumbelSoftmaxWrapper(

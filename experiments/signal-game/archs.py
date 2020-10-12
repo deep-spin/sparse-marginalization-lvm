@@ -60,13 +60,13 @@ class Sender(nn.Module):
 
 class Receiver(nn.Module):
     def __init__(self, game_size, feat_size, embedding_size,
-                 vocab_size, reinforce):
+                 vocab_size, sfe):
         super(Receiver, self).__init__()
         self.game_size = game_size
         self.embedding_size = embedding_size
 
         self.lin1 = nn.Linear(feat_size, embedding_size, bias=False)
-        if reinforce:
+        if sfe:
             self.lin2 = nn.Embedding(vocab_size, embedding_size)
         else:
             self.lin2 = nn.Linear(vocab_size, embedding_size, bias=False)

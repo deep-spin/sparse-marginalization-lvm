@@ -228,7 +228,7 @@ class BitVectorVIMCO(torch.nn.Module):
         # [B]
         inf_grad_surrogate_entropy = (- w.detach() * log_q).sum(-1)
 
-        # part 1 (the REINFORCE-looking part)
+        # part 1 (the SFE-looking part)
         # I will assume the original paper used c = 0
         # []
         c = 0
@@ -253,17 +253,17 @@ class BitVectorVIMCO(torch.nn.Module):
         # [B, K]
         centred_L = (L.unsqueeze(-1) - b - c)
 
-        inf_grad_surrogate_reinforce = centred_L.detach() * log_q
+        inf_grad_surrogate_sfe = centred_L.detach() * log_q
         # [B]
-        inf_grad_surrogate_reinforce = inf_grad_surrogate_reinforce.sum(-1)
+        inf_grad_surrogate_sfe = inf_grad_surrogate_sfe.sum(-1)
 
-        # reinforce surrogate
+        # sfe surrogate
         # Switch to minimisation mode
         # []
         full_loss = - (
             gen_grad_surrogate +
             inf_grad_surrogate_entropy * self.encoder_entropy_coeff +
-            inf_grad_surrogate_reinforce).mean(dim=0)
+            inf_grad_surrogate_sfe).mean(dim=0)
 
         for k, v in logs.items():
             if hasattr(v, 'mean'):

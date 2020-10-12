@@ -11,7 +11,7 @@ from lvmhelpers.marg import \
 from lvmhelpers.sum_and_sample import \
     SumAndSampleWrapper, SumAndSample
 from lvmhelpers.sfe import \
-    ReinforceWrapper, ReinforceDeterministicWrapper, ScoreFunctionEstimator
+    SFEWrapper, SFEDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -64,7 +64,7 @@ class SignalGame(pl.LightningModule):
             self.hparams.feat_size,
             self.hparams.embedding_size,
             self.hparams.vocab_size,
-            reinforce=(
+            sfe=(
                 self.hparams.mode == 'sfe' or
                 self.hparams.mode == 'marg' or
                 self.hparams.mode == 'sumsample'))
@@ -72,13 +72,13 @@ class SignalGame(pl.LightningModule):
         loss_fun = loss_nll
 
         if self.hparams.mode == 'sfe':
-            sender = ReinforceWrapper(sender, baseline_type=self.hparams.baseline_type)
+            sender = SFEWrapper(sender, baseline_type=self.hparams.baseline_type)
             if self.hparams.loss_type == 'acc':
                 loss_fun = loss_acc
-                receiver = ReinforceWrapper(
+                receiver = SFEWrapper(
                     receiver, baseline_type=self.hparams.baseline_type)
             else:
-                receiver = ReinforceDeterministicWrapper(receiver)
+                receiver = SFEDeterministicWrapper(receiver)
             lvm_method = ScoreFunctionEstimator
         elif self.hparams.mode == 'gs':
             sender = GumbelSoftmaxWrapper(
@@ -220,7 +220,7 @@ def loss_acc(_sender_input, _message, _receiver_input, receiver_output, labels):
 
 def loss_nll(_sender_input, _message, _receiver_input, receiver_output, labels):
     """
-    NLL loss - differentiable and can be used with both GS and Reinforce
+    NLL loss - differentiable and can be used with both GS and SFE
     """
     nll = F.nll_loss(receiver_output, labels, reduction="none")
     # receiver outputs are logits
