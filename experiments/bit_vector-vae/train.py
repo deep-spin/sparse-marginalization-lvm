@@ -309,17 +309,17 @@ class VAE(pl.LightningModule):
             torch.tensor(float(n_samples))
         )
 
-        sample_influence = logp_x_importance
+        sample_influence = logp_x_importance.mean(dim=0)
 
         if self.hparams.mode == 'sparsemap':
             # logp_x_deterministic_term: [batch_size]
             logp_x_deterministic_term = []
             logp_x_given_z = - util_dict['loss_output']
             idxs = util_dict['idxs']
-            for k in range(self.hparams.batch_size):
+            for k in range(inf_input.size(0)):
                 logp_x_deterministic_term.append(
                     torch.logsumexp(
-                        logp_x_given_z[torch.tensor(idxs) == k] + logp_z,  # TODO: right?
+                        logp_x_given_z[torch.tensor(idxs) == k] + logp_z,
                         dim=0))
             logp_x_deterministic_term = torch.stack(logp_x_deterministic_term)
 
