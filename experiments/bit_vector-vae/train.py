@@ -425,6 +425,17 @@ def main(params):
             other_info.append(f"b{opts.budget}")
         if opts.noinit:
             other_info.append("noinit")
+    elif opts.mode == "gs":
+        if opts.straight_through:
+            other_info.append("straight_through")
+        other_info.append("decay-{}".format(opts.temperature_decay))
+        other_info.append("updatefreq-{}".format(opts.temperature_update_freq))
+    elif opts.mode == 'sfe':
+        other_info.append("baseline-{}".format(opts.baseline_type))
+    elif opts.mode == 'vimco':
+        other_info.append("k-{}".format(opts.vimco_k))
+    elif opts.mode == "topksparse":
+        other_info.append("k-{}".format(opts.topksparse))
 
     model_name = '%s/%s' % (model_name, '_'.join(other_info))
 
