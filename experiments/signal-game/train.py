@@ -282,6 +282,17 @@ def main(params):
     other_info = [
         "lr-{}".format(opts.lr),
     ]
+
+    if opts.mode == "gs":
+        if opts.straight_through:
+            other_info.append("straight_through")
+        other_info.append("decay-{}".format(opts.temperature_decay))
+        other_info.append("updatefreq-{}".format(opts.temperature_update_freq))
+    elif opts.mode == 'sfe':
+        other_info.append("baseline-{}".format(opts.baseline_type))
+    elif opts.mode == 'vimco':
+        other_info.append("k-{}".format(opts.vimco_k))
+
     model_name = '%s/%s' % (model_name, '_'.join(other_info))
 
     tb_logger = pl_loggers.TensorBoardLogger(
