@@ -124,10 +124,10 @@ class SignalGame(pl.LightningModule):
         result.log('train_loss', training_result['log']['loss'], prog_bar=True)
         result.log('train_acc', training_result['log']['acc'], prog_bar=True)
 
-        if 'nonzeros' in training_result['log'].keys():
+        if 'support' in training_result['log'].keys():
             result.log(
-                'train_nonzeros',
-                training_result['log']['nonzeros'],
+                'train_support',
+                training_result['log']['support'],
                 prog_bar=True)
 
         # Update temperature if Gumbel
@@ -147,10 +147,10 @@ class SignalGame(pl.LightningModule):
         result.log('val_loss', validation_result['log']['loss'], prog_bar=True)
         result.log('val_acc', validation_result['log']['acc'], prog_bar=True)
 
-        if 'nonzeros' in validation_result['log'].keys():
+        if 'support' in validation_result['log'].keys():
             result.log(
-                'val_nonzeros',
-                validation_result['log']['nonzeros'],
+                'val_support',
+                validation_result['log']['support'],
                 prog_bar=True)
         return result
 
@@ -161,10 +161,10 @@ class SignalGame(pl.LightningModule):
         result.log('test_loss', test_result['log']['loss'])
         result.log('test_acc', test_result['log']['acc'])
 
-        if 'nonzeros' in test_result['log'].keys():
+        if 'support' in test_result['log'].keys():
             result.log(
-                'test_nonzeros',
-                test_result['log']['nonzeros'],
+                'test_support',
+                test_result['log']['support'],
                 prog_bar=True)
         return result
 

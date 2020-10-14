@@ -150,10 +150,10 @@ class SSVAE(pl.LightningModule):
             result.log('train_elbo', unsupervised_output['log']['loss'], prog_bar=True)
             result.log('train_acc', unsupervised_output['log']['acc'], prog_bar=True)
 
-            if 'nonzeros' in unsupervised_output['log'].keys():
+            if 'support' in unsupervised_output['log'].keys():
                 result.log(
-                    'train_nonzeros',
-                    unsupervised_output['log']['nonzeros'],
+                    'train_support',
+                    unsupervised_output['log']['support'],
                     prog_bar=True)
 
         # Update temperature if Gumbel
@@ -174,10 +174,10 @@ class SSVAE(pl.LightningModule):
         result.log('val_elbo', validation_result['log']['loss'], prog_bar=True)
         result.log('val_acc', validation_result['log']['acc'], prog_bar=True)
 
-        if 'nonzeros' in validation_result['log'].keys():
+        if 'support' in validation_result['log'].keys():
             result.log(
-                'val_nonzeros',
-                validation_result['log']['nonzeros'],
+                'val_support',
+                validation_result['log']['support'],
                 prog_bar=True)
         return result
 
@@ -189,10 +189,10 @@ class SSVAE(pl.LightningModule):
         result.log('test_elbo', test_result['log']['loss'])
         result.log('test_acc', test_result['log']['acc'])
 
-        if 'nonzeros' in test_result['log'].keys():
+        if 'support' in test_result['log'].keys():
             result.log(
-                'test_nonzeros',
-                test_result['log']['nonzeros'],
+                'test_support',
+                test_result['log']['support'],
                 prog_bar=True)
         return result
 
@@ -371,7 +371,8 @@ def get_model(opt):
             batch_size=opt.batch_size,
             lr=opt.lr,
             weight_decay=opt.weight_decay,
-            optimizer=opt.optimizer)
+            optimizer=opt.optimizer,
+            strict=False)
 
     return model
 

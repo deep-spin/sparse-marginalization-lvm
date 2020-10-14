@@ -35,7 +35,6 @@ class VIMCOWrapper(nn.Module):
         entropy = distr.entropy()
 
         sample = distr.sample((self.k, ))
-        # sample = logits.argmax(dim=-1)
 
         return sample, logits, entropy
 
@@ -81,7 +80,7 @@ class VIMCO(torch.nn.Module):
 
         loss, logs = self.loss(
             encoder_input_repeat,
-            discrete_latent_z.reshape(-1),
+            encoder_log_prob.argmax(dim=-1),
             decoder_input_repeat,
             decoder_output,
             labels_repeat)
@@ -209,8 +208,6 @@ class BitVectorVIMCOWrapper(nn.Module):
         entropy = distr.entropy().sum(dim=1)
 
         sample = distr.sample((self.k, ))
-        # argmax sample
-        # sample = (logits > 0).to(torch.float)
 
         return sample, logits, entropy
 
@@ -255,7 +252,7 @@ class BitVectorVIMCO(torch.nn.Module):
 
         loss, logs = self.loss(
             encoder_input_repeat,
-            discrete_latent_z.reshape(-1, latent_size),
+            (encoder_log_prob > 0).to(torch.float),
             decoder_input_repeat,
             decoder_output,
             labels_repeat)

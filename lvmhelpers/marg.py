@@ -54,75 +54,60 @@ class Marginalizer(torch.nn.Module):
         self.decoder_entropy_coeff = decoder_entropy_coeff
 
     def forward(self, encoder_input, decoder_input, labels):
-        message, encoder_probs, encoder_entropy = self.encoder(encoder_input)
+        discrete_latent_z, encoder_probs, encoder_entropy = self.encoder(encoder_input)
         batch_size, latent_size = encoder_probs.shape
 
         entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
-        if self.training:
-            losses = torch.zeros_like(encoder_probs)
-            logs_global = None
 
-            for possible_message in range(latent_size):
-                if encoder_probs[:, possible_message].sum().detach() != 0:
-                    # if it's zero, all batch examples
-                    # will be multiplied by zero anyway,
-                    # so skip computations
-                    possible_message_ = \
-                        possible_message + \
-                        torch.zeros(
-                            batch_size, dtype=torch.long).to(encoder_probs.device)
-                    decoder_output = self.decoder(
-                        possible_message_, decoder_input)
+        losses = torch.zeros_like(encoder_probs)
+        logs_global = None
 
-                    loss_sum_term, logs = self.loss(
-                        encoder_input,
-                        message,
-                        decoder_input,
-                        decoder_output,
-                        labels)
+        for possible_discrete_latent_z in range(latent_size):
+            if encoder_probs[:, possible_discrete_latent_z].sum().detach() != 0:
+                # if it's zero, all batch examples
+                # will be multiplied by zero anyway,
+                # so skip computations
+                possible_discrete_latent_z_ = \
+                    possible_discrete_latent_z + \
+                    torch.zeros(
+                        batch_size, dtype=torch.long).to(encoder_probs.device)
+                decoder_output = self.decoder(
+                    possible_discrete_latent_z_, decoder_input)
 
-                    losses[:, possible_message] += loss_sum_term
+                loss_sum_term, logs = self.loss(
+                    encoder_input,
+                    discrete_latent_z,
+                    decoder_input,
+                    decoder_output,
+                    labels)
 
-                    if not logs_global:
-                        logs_global = {k: 0.0 for k in logs.keys()}
-                    for k, v in logs.items():
-                        if hasattr(v, 'mean'):
-                            # expectation of accuracy
-                            logs_global[k] += (
-                                encoder_probs[:, possible_message] * v).mean()
+                losses[:, possible_discrete_latent_z] += loss_sum_term
 
-            for k, v in logs.items():
-                if hasattr(v, 'mean'):
-                    logs[k] = logs_global[k]
+                if not logs_global:
+                    logs_global = {k: 0.0 for k in logs.keys()}
+                for k, v in logs.items():
+                    if hasattr(v, 'mean'):
+                        # expectation of accuracy
+                        logs_global[k] += (
+                            encoder_probs[:, possible_discrete_latent_z] * v).mean()
 
-            # encoder_probs: [batch_size, latent_size]
-            # losses: [batch_size, latent_size]
-            # encoder_probs.unsqueeze(1): [batch_size, 1, latent_size]
-            # losses.unsqueeze(-1): [batch_size, latent_size, 1]
-            # entropy_loss: []
-            # full_loss: []
-            loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
-            full_loss = loss.mean() + entropy_loss.mean()
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = logs_global[k]
 
-        else:
-            decoder_output = self.decoder(message, decoder_input)
-            loss, logs = self.loss(
-                encoder_input,
-                message,
-                decoder_input,
-                decoder_output,
-                labels)
-
-            full_loss = loss.mean() + entropy_loss
-
-            for k, v in logs.items():
-                if hasattr(v, 'mean'):
-                    logs[k] = v.mean()
+        # encoder_probs: [batch_size, latent_size]
+        # losses: [batch_size, latent_size]
+        # encoder_probs.unsqueeze(1): [batch_size, 1, latent_size]
+        # losses.unsqueeze(-1): [batch_size, latent_size, 1]
+        # entropy_loss: []
+        # full_loss: []
+        loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
+        full_loss = loss.mean() + entropy_loss.mean()
 
         logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
         # TODO: nonzero for every epoch end
-        logs['nonzeros'] = (encoder_probs != 0).sum(-1).to(torch.float).mean()
+        logs['support'] = (encoder_probs != 0).sum(-1).to(torch.float).mean()
         return {'loss': full_loss, 'log': logs}

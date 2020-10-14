@@ -38,10 +38,7 @@ class SFEWrapper(nn.Module):
         distr = Categorical(logits=logits)
         entropy = distr.entropy()
 
-        if self.training:
-            sample = distr.sample()
-        else:
-            sample = logits.argmax(dim=-1)
+        sample = distr.sample()
 
         return sample, logits, entropy
 
@@ -96,9 +93,11 @@ class ScoreFunctionEstimator(torch.nn.Module):
         decoder_output, decoder_log_prob, decoder_entropy = \
             self.decoder(discrete_latent_z, decoder_input)
 
+        argmax = encoder_log_prob.argmax(dim=-1)
+
         loss, logs = self.loss(
             encoder_input,
-            discrete_latent_z,
+            argmax,
             decoder_input,
             decoder_output,
             labels)
@@ -182,10 +181,7 @@ class BitVectorSFEWrapper(nn.Module):
         distr = Bernoulli(logits=logits)
         entropy = distr.entropy().sum(dim=1)
 
-        if self.training:
-            sample = distr.sample()
-        else:
-            sample = (logits > 0).to(torch.float)
+        sample = distr.sample()
 
         return sample, logits, entropy
 
@@ -213,9 +209,11 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
         decoder_output, decoder_log_prob, decoder_entropy = \
             self.decoder(discrete_latent_z, decoder_input)
 
+        argmax = (encoder_log_prob > 0).to(torch.float)
+
         loss, logs = self.loss(
             encoder_input,
-            discrete_latent_z,
+            argmax,
             decoder_input,
             decoder_output,
             labels)

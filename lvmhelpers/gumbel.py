@@ -12,16 +12,9 @@ from torch.distributions import Categorical, Bernoulli
 def gumbel_softmax_sample(
         logits: torch.Tensor,
         temperature: float = 1.0,
-        training: bool = True,
         straight_through: bool = False):
 
     size = logits.size()
-    if not training:
-        indexes = logits.argmax(dim=-1)
-        one_hot = torch.zeros_like(logits).view(-1, size[-1])
-        one_hot.scatter_(1, indexes.view(-1, 1), 1)
-        one_hot = one_hot.view(*size)
-        return one_hot
 
     sample = RelaxedOneHotCategorical(
         logits=logits, temperature=temperature).rsample()
@@ -40,12 +33,7 @@ def gumbel_softmax_sample(
 def gumbel_softmax_bit_vector_sample(
         logits: torch.Tensor,
         temperature: float = 1.0,
-        training: bool = True,
         straight_through: bool = False):
-
-    if not training:
-        argmax = (logits > 0).to(torch.float)
-        return argmax
 
     sample = RelaxedBernoulli(
         logits=logits, temperature=temperature).rsample()
@@ -106,7 +94,7 @@ class GumbelSoftmaxWrapper(nn.Module):
     def forward(self, *args, **kwargs):
         logits = self.agent(*args, **kwargs)
         sample = gumbel_softmax_sample(
-            logits, self.temperature, self.training, self.straight_through)
+            logits, self.temperature, self.straight_through)
         distr = self.distr_type(logits=logits)
         entropy = distr.entropy()
         return sample, logits, entropy
@@ -147,9 +135,11 @@ class Gumbel(torch.nn.Module):
         # compute already but will only use it later on
         entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
 
+        argmax = encoder_log_prob.argmax(dim=-1)
+
         loss, logs = self.loss(
             encoder_input,
-            discrete_latent_z,
+            argmax,
             decoder_input,
             decoder_output,
             labels)
@@ -192,7 +182,53 @@ class BitVectorGumbelSoftmaxWrapper(GumbelSoftmaxWrapper):
     def forward(self, *args, **kwargs):
         logits = self.agent(*args, **kwargs)
         sample = gumbel_softmax_bit_vector_sample(
-            logits, self.temperature, self.training, self.straight_through)
+            logits, self.temperature, self.straight_through)
         distr = self.distr_type(logits=logits)
         entropy = distr.entropy().sum(dim=-1)
         return sample, logits, entropy
+
+
+class BitVectorGumbel(torch.nn.Module):
+    def __init__(
+            self,
+            encoder,
+            decoder,
+            loss_fun,
+            encoder_entropy_coeff=0.0,
+            decoder_entropy_coeff=0.0):
+        super(Gumbel, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.loss = loss_fun
+        self.encoder_entropy_coeff = encoder_entropy_coeff
+        self.decoder_entropy_coeff = decoder_entropy_coeff
+
+    def forward(self, encoder_input, decoder_input, labels):
+        discrete_latent_z, encoder_log_prob, encoder_entropy = self.encoder(encoder_input)
+        decoder_output = self.decoder(discrete_latent_z, decoder_input)
+
+        # entropy component of the final loss, we can
+        # compute already but will only use it later on
+        entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
+
+        argmax = (encoder_log_prob > 0).to(torch.float)
+
+        loss, logs = self.loss(
+            encoder_input,
+            argmax,
+            decoder_input,
+            decoder_output,
+            labels)
+
+        full_loss = loss.mean() + entropy_loss
+
+        for k, v in logs.items():
+            if hasattr(v, 'mean'):
+                logs[k] = v.mean()
+
+        logs['baseline'] = torch.zeros(1).to(loss.device)
+        logs['loss'] = loss.mean()
+        logs['encoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['distr'] = self.encoder.distr_type(logits=encoder_log_prob)
+        return {'loss': full_loss, 'log': logs}
