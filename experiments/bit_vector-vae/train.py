@@ -159,7 +159,7 @@ class VAE(pl.LightningModule):
         else:
             n_importance_samples = 16
 
-        logp_x_bits, logp_x_nats, sample_influence = \
+        logp_x_bits, logp_x_nats, non_supp_influence = \
             self.compute_importance_sampling(
                 validation_result['log'],
                 inf_input,
@@ -168,6 +168,7 @@ class VAE(pl.LightningModule):
         result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-val_elbo', -elbo, prog_bar=True)
         result.log('val_logp_x_bits', logp_x_bits, prog_bar=True)
+        result.log('val_non_supp_influence', non_supp_influence)
 
         if 'support' in validation_result['log'].keys():
             result.log(
@@ -189,7 +190,7 @@ class VAE(pl.LightningModule):
             test_result['log']['encoder_entropy'] + \
             self.hparams.latent_size * torch.log(torch.tensor(0.5))
 
-        logp_x_bits, logp_x_nats, sample_influence = \
+        logp_x_bits, logp_x_nats, non_supp_influence = \
             self.compute_importance_sampling(
                 test_result['log'],
                 inf_input,
@@ -198,6 +199,7 @@ class VAE(pl.LightningModule):
         result = pl.EvalResult(checkpoint_on=-elbo)
         result.log('-test_elbo', -elbo, prog_bar=True)
         result.log('test_logp_x_bits', logp_x_bits, prog_bar=True)
+        result.log('test_non_supp_influence', non_supp_influence)
 
         if 'support' in test_result['log'].keys():
             result.log(
@@ -309,7 +311,7 @@ class VAE(pl.LightningModule):
             torch.tensor(float(n_samples))
         )
 
-        sample_influence = logp_x_importance.mean(dim=0)
+        non_supp_influence = logp_x_importance.mean(dim=0)
 
         if self.hparams.mode == 'sparsemap':
             # logp_x_deterministic_term: [batch_size]
@@ -343,13 +345,13 @@ class VAE(pl.LightningModule):
             logp_x_importance = torch.logsumexp(
                 torch.stack([logp_x_deterministic_term, logp_x_importance]), dim=0)
         else:
-            sample_influence = 0.0
+            non_supp_influence = 0.0
 
         logp_x_bits = logp_x_importance.mean(dim=0) / torch.log(torch.tensor(2.0))
         logp_x_bits = - logp_x_bits / self.hparams.n_features
         logp_x_nats = logp_x_importance.mean(dim=0)
 
-        return logp_x_bits, logp_x_nats, sample_influence
+        return logp_x_bits, logp_x_nats, non_supp_influence
 
 
 def reconstruction_loss(
