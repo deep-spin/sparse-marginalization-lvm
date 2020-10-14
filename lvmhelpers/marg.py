@@ -31,10 +31,10 @@ class ExplicitWrapper(nn.Module):
         self.normalizer = normalizer_dict[normalizer]
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
-        distr = self.normalizer(logits, dim=-1)
+        scores = self.agent(*args, **kwargs)
+        distr = self.normalizer(scores, dim=-1)
         entropy_distr = entropy(distr)
-        sample = logits.argmax(dim=-1)
+        sample = scores.argmax(dim=-1)
         return sample, distr, entropy_distr
 
 

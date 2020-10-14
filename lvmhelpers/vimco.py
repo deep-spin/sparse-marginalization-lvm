@@ -29,14 +29,14 @@ class VIMCOWrapper(nn.Module):
         self.k = k
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
+        scores = self.agent(*args, **kwargs)
 
-        distr = Categorical(logits=logits)
+        distr = Categorical(logits=scores)
         entropy = distr.entropy()
 
         sample = distr.sample((self.k, ))
 
-        return sample, logits, entropy
+        return sample, scores, entropy
 
 
 class VIMCO(torch.nn.Module):
@@ -57,9 +57,9 @@ class VIMCO(torch.nn.Module):
         self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
-        discrete_latent_z, encoder_log_prob, encoder_entropy = \
+        discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
-        batch_size, latent_size = encoder_log_prob.shape
+        batch_size, latent_size = encoder_scores.shape
         K, _ = discrete_latent_z.shape
 
         encoder_input_repeat = \
@@ -80,12 +80,12 @@ class VIMCO(torch.nn.Module):
 
         loss, logs = self.loss(
             encoder_input_repeat,
-            encoder_log_prob.argmax(dim=-1),
+            encoder_scores.argmax(dim=-1),
             decoder_input_repeat,
             decoder_output,
             labels_repeat)
 
-        encoder_categorical_distr = Categorical(logits=encoder_log_prob)
+        encoder_categorical_distr = Categorical(logits=encoder_scores)
         encoder_sample_log_probs = \
             encoder_categorical_distr.log_prob(discrete_latent_z)
 
@@ -202,14 +202,14 @@ class BitVectorVIMCOWrapper(nn.Module):
         self.k = k
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
+        scores = self.agent(*args, **kwargs)
 
-        distr = Bernoulli(logits=logits)
+        distr = Bernoulli(logits=scores)
         entropy = distr.entropy().sum(dim=1)
 
         sample = distr.sample((self.k, ))
 
-        return sample, logits, entropy
+        return sample, scores, entropy
 
 
 class BitVectorVIMCO(torch.nn.Module):
@@ -230,7 +230,7 @@ class BitVectorVIMCO(torch.nn.Module):
         self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
-        discrete_latent_z, encoder_log_prob, encoder_entropy = \
+        discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
         K, batch_size, latent_size = discrete_latent_z.shape
 
@@ -252,12 +252,12 @@ class BitVectorVIMCO(torch.nn.Module):
 
         loss, logs = self.loss(
             encoder_input_repeat,
-            (encoder_log_prob > 0).to(torch.float),
+            (encoder_scores > 0).to(torch.float),
             decoder_input_repeat,
             decoder_output,
             labels_repeat)
 
-        encoder_bernoull_distr = Bernoulli(logits=encoder_log_prob)
+        encoder_bernoull_distr = Bernoulli(logits=encoder_scores)
         encoder_sample_log_probs = \
             encoder_bernoull_distr.log_prob(discrete_latent_z).sum(dim=-1)
 

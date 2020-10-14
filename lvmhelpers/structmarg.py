@@ -30,15 +30,15 @@ class TopKSparsemaxWrapper(nn.Module):
         self.k = k
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
-        batch_size, latent_size = logits.shape
+        scores = self.agent(*args, **kwargs)
+        batch_size, latent_size = scores.shape
         # get the top-k bit-vectors
         bit_vector_z = torch.empty((batch_size, self.k, latent_size), dtype=torch.float32)
-        batched_topk(logits.detach().cpu().numpy(), bit_vector_z.numpy(), self.k)
-        bit_vector_z = bit_vector_z.to(logits.device)
+        batched_topk(scores.detach().cpu().numpy(), bit_vector_z.numpy(), self.k)
+        bit_vector_z = bit_vector_z.to(scores.device)
 
         # rank the top-k using sparsemax
-        scores = torch.einsum("bkj,bj->bk", bit_vector_z, logits)
+        scores = torch.einsum("bkj,bj->bk", bit_vector_z, scores)
         distr = sparsemax(scores, dim=-1)
 
         # get the entropy
@@ -152,8 +152,8 @@ class SparseMAPWrapper(nn.Module):
         self.max_iter = max_iter
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
-        batch_size, latent_size = logits.shape
+        scores = self.agent(*args, **kwargs)
+        batch_size, latent_size = scores.shape
 
         distr = []
         sample = []
@@ -161,7 +161,7 @@ class SparseMAPWrapper(nn.Module):
 
         support = []
         for k in range(batch_size):
-            zl = logits[k]
+            zl = scores[k]
             if self.budget > 0:
                 distri, samplei = budget_smap(
                     zl, budget=self.budget, init=self.init, max_iter=self.max_iter)

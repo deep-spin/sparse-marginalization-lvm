@@ -58,14 +58,14 @@ class SumAndSampleWrapper(nn.Module):
         self.topk = topk
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
+        scores = self.agent(*args, **kwargs)
 
-        distr = Categorical(logits=logits)
+        distr = Categorical(logits=scores)
         entropy = distr.entropy()
 
-        sample = logits.argmax(dim=-1)
+        sample = scores.argmax(dim=-1)
 
-        return sample, logits, entropy
+        return sample, scores, entropy
 
 
 class SumAndSample(torch.nn.Module):
@@ -84,16 +84,18 @@ class SumAndSample(torch.nn.Module):
         self.decoder_entropy_coeff = decoder_entropy_coeff
 
     def forward(self, encoder_input, decoder_input, labels):
-        discrete_latent_z, encoder_log_prob, encoder_entropy = \
+        discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
-        batch_size, _ = encoder_log_prob.shape
+        batch_size, _ = encoder_scores.shape
+
+        encoder_log_prob = torch.log_softmax(encoder_scores, dim=-1)
 
         # entropy component of the final loss, we can
         # compute already but will only use it later on
         entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
 
         if self.training:
-            encoder_prob = torch.exp(encoder_log_prob.detach())
+            encoder_prob = torch.softmax(encoder_scores.detach(), dim=-1)
             # this is the indicator C_k
             concentrated_mask, topk_domain, seq_tensor = \
                 get_concentrated_mask(encoder_prob, self.encoder.topk)

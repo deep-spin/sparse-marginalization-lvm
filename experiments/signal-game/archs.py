@@ -40,10 +40,8 @@ class Sender(nn.Module):
         # h of size (batch_size, embedding_size)
         h = self.lin4(h)
         h = h.mul(1./self.temp)
-        # h of size (batch_size, vocab_size)
-        logits = F.log_softmax(h, dim=1)
 
-        return logits
+        return h
 
     def return_embeddings(self, x):
         # sender only sees a single image---the one receiver needs to pick

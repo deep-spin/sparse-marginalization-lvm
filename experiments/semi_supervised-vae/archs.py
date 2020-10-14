@@ -97,9 +97,7 @@ class Classifier(nn.Module):
         h = F.relu(self.fc3(h))
         h = self.fc4(h)
 
-        logits = F.log_softmax(h, dim=1)
-
-        return logits
+        return h
 
 
 class MLPDecoder(nn.Module):

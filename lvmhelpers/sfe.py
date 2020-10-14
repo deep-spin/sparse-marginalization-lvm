@@ -33,14 +33,14 @@ class SFEWrapper(nn.Module):
         self.baseline_type = baseline_type
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
+        scores = self.agent(*args, **kwargs)
 
-        distr = Categorical(logits=logits)
+        distr = Categorical(logits=scores)
         entropy = distr.entropy()
 
         sample = distr.sample()
 
-        return sample, logits, entropy
+        return sample, scores, entropy
 
 
 class SFEDeterministicWrapper(nn.Module):
@@ -88,12 +88,12 @@ class ScoreFunctionEstimator(torch.nn.Module):
         self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
-        discrete_latent_z, encoder_log_prob, encoder_entropy = \
+        discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
         decoder_output, decoder_log_prob, decoder_entropy = \
             self.decoder(discrete_latent_z, decoder_input)
 
-        argmax = encoder_log_prob.argmax(dim=-1)
+        argmax = encoder_scores.argmax(dim=-1)
 
         loss, logs = self.loss(
             encoder_input,
@@ -102,7 +102,7 @@ class ScoreFunctionEstimator(torch.nn.Module):
             decoder_output,
             labels)
 
-        encoder_categorical_helper = Categorical(logits=encoder_log_prob)
+        encoder_categorical_helper = Categorical(logits=encoder_scores)
         encoder_sample_log_probs = encoder_categorical_helper.log_prob(discrete_latent_z)
         if len(decoder_log_prob.size()) != 1:
             decoder_categorical_helper = Categorical(logits=decoder_log_prob)
@@ -176,14 +176,14 @@ class BitVectorSFEWrapper(nn.Module):
         self.baseline_type = baseline_type
 
     def forward(self, *args, **kwargs):
-        logits = self.agent(*args, **kwargs)
+        scores = self.agent(*args, **kwargs)
 
-        distr = Bernoulli(logits=logits)
+        distr = Bernoulli(logits=scores)
         entropy = distr.entropy().sum(dim=1)
 
         sample = distr.sample()
 
-        return sample, logits, entropy
+        return sample, scores, entropy
 
 
 class BitVectorScoreFunctionEstimator(torch.nn.Module):
@@ -204,12 +204,12 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
         self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
-        discrete_latent_z, encoder_log_prob, encoder_entropy = \
+        discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
         decoder_output, decoder_log_prob, decoder_entropy = \
             self.decoder(discrete_latent_z, decoder_input)
 
-        argmax = (encoder_log_prob > 0).to(torch.float)
+        argmax = (encoder_scores > 0).to(torch.float)
 
         loss, logs = self.loss(
             encoder_input,
@@ -218,7 +218,7 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
             decoder_output,
             labels)
 
-        encoder_bernoull_distr = Bernoulli(logits=encoder_log_prob)
+        encoder_bernoull_distr = Bernoulli(logits=encoder_scores)
         encoder_sample_log_probs = \
             encoder_bernoull_distr.log_prob(discrete_latent_z).sum(dim=1)
 

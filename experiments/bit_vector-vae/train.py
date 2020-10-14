@@ -200,6 +200,11 @@ class VAE(pl.LightningModule):
         result.log('-test_elbo', -elbo, prog_bar=True)
         result.log('test_logp_x_bits', logp_x_bits, prog_bar=True)
         result.log('test_non_supp_influence', non_supp_influence)
+        result.log('test_distortion', test_result['log']['loss'])
+        result.log(
+            'test_rate',
+            - self.hparams.latent_size * torch.log(torch.tensor(0.5))
+            - test_result['log']['encoder_entropy'])
 
         if 'support' in test_result['log'].keys():
             result.log(
