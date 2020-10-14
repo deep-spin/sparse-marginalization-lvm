@@ -4,7 +4,7 @@ import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 
 import torch
-from torch.nn import NLLLoss
+from torch.nn import CrossEntropyLoss
 
 from entmax import SparsemaxLoss, Entmax15Loss
 
@@ -308,7 +308,7 @@ def get_supervised_loss(
         true_labels,
         normalizer):
     if normalizer == 'softmax':
-        loss = NLLLoss(reduction='none')
+        loss = CrossEntropyLoss(reduction='none')
     elif normalizer == 'entmax15':
         loss = Entmax15Loss(reduction='none')
     elif normalizer == 'sparsemax':
