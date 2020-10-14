@@ -345,7 +345,7 @@ class VAE(pl.LightningModule):
             logp_x_importance = torch.logsumexp(
                 torch.stack([logp_x_deterministic_term, logp_x_importance]), dim=0)
         else:
-            non_supp_influence = 0.0
+            non_supp_influence = torch.tensor(0.0)
 
         logp_x_bits = logp_x_importance.mean(dim=0) / torch.log(torch.tensor(2.0))
         logp_x_bits = - logp_x_bits / self.hparams.n_features
