@@ -34,10 +34,8 @@ class VIMCOWrapper(nn.Module):
         distr = Categorical(logits=logits)
         entropy = distr.entropy()
 
-        if self.training:
-            sample = distr.sample((self.k, ))
-        else:
-            sample = logits.argmax(dim=-1)
+        sample = distr.sample((self.k, ))
+        # sample = logits.argmax(dim=-1)
 
         return sample, logits, entropy
 
@@ -63,11 +61,7 @@ class VIMCO(torch.nn.Module):
         discrete_latent_z, encoder_log_prob, encoder_entropy = \
             self.encoder(encoder_input)
         batch_size, latent_size = encoder_log_prob.shape
-        if self.training:
-            K, _ = discrete_latent_z.shape
-        else:
-            discrete_latent_z = discrete_latent_z.unsqueeze(0)
-            K = 1
+        K, _ = discrete_latent_z.shape
 
         encoder_input_repeat = \
             encoder_input.repeat(
@@ -109,6 +103,11 @@ class VIMCO(torch.nn.Module):
         # [B, K]
         log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
 
+        # normalized log importance weights: log w
+        # (all computed in log space)
+        # [B, K]
+        log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
+
         # Importance weights: w
         w = log_w.exp()
 
@@ -131,7 +130,7 @@ class VIMCO(torch.nn.Module):
         # part 1 (the SFE-looking part)
         # I will assume the original paper used c = 0
         # []
-        c = 0
+        c = 0.
 
         # Average log ratio (keeping the kth term out)
         # [B, K]
@@ -148,7 +147,10 @@ class VIMCO(torch.nn.Module):
         # note how log_r and -log_r cancel out in the diagonal :)
         b = log_r.unsqueeze(-1) + torch.diag_embed(log_a - log_r)
         # [B, K]
-        b = b.logsumexp(-1) - np.log(K)
+        # remember to reduce dim 1 (doing a logsumexp on
+        # dim=-1 would be a mistake, the broadcast above
+        # repeats dim=1 along dim=2)
+        b = b.logsumexp(dim=1) - np.log(K)
 
         # [B, K]
         centred_L = (L.unsqueeze(-1) - b - c)
@@ -206,10 +208,9 @@ class BitVectorVIMCOWrapper(nn.Module):
         distr = Bernoulli(logits=logits)
         entropy = distr.entropy().sum(dim=1)
 
-        if self.training:
-            sample = distr.sample((self.k, ))
-        else:
-            sample = (logits > 0).to(torch.float)
+        sample = distr.sample((self.k, ))
+        # argmax sample
+        # sample = (logits > 0).to(torch.float)
 
         return sample, logits, entropy
 
@@ -234,12 +235,7 @@ class BitVectorVIMCO(torch.nn.Module):
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_log_prob, encoder_entropy = \
             self.encoder(encoder_input)
-        if self.training:
-            K, batch_size, latent_size = discrete_latent_z.shape
-        else:
-            batch_size, latent_size = discrete_latent_z.shape
-            discrete_latent_z = discrete_latent_z.unsqueeze(0)
-            K = 1
+        K, batch_size, latent_size = discrete_latent_z.shape
 
         encoder_input_repeat = \
             encoder_input.repeat(
@@ -276,7 +272,7 @@ class BitVectorVIMCO(torch.nn.Module):
         log_q = encoder_sample_log_probs.transpose(0, 1)
         log_r = log_p - log_q
 
-        # Log importance weights: log w
+        # normalized log importance weights: log w
         # (all computed in log space)
         # [B, K]
         log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
@@ -303,7 +299,7 @@ class BitVectorVIMCO(torch.nn.Module):
         # part 1 (the SFE-looking part)
         # I will assume the original paper used c = 0
         # []
-        c = 0
+        c = 0.
 
         # Average log ratio (keeping the kth term out)
         # [B, K]
@@ -320,7 +316,10 @@ class BitVectorVIMCO(torch.nn.Module):
         # note how log_r and -log_r cancel out in the diagonal :)
         b = log_r.unsqueeze(-1) + torch.diag_embed(log_a - log_r)
         # [B, K]
-        b = b.logsumexp(-1) - np.log(K)
+        # remember to reduce dim 1 (doing a logsumexp on
+        # dim=-1 would be a mistake, the broadcast above
+        # repeats dim=1 along dim=2)
+        b = b.logsumexp(dim=1) - np.log(K)
 
         # [B, K]
         centred_L = (L.unsqueeze(-1) - b - c)
