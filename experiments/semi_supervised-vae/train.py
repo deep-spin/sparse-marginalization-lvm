@@ -407,6 +407,8 @@ def main(params):
         other_info.append("baseline-{}".format(opts.baseline_type))
     elif opts.mode == 'vimco':
         other_info.append("k-{}".format(opts.vimco_k))
+    elif opts.mode == "marg":
+        other_info.append("norm-{}".format(opts.normalizer))
 
     model_name = '%s/%s' % (model_name, '_'.join(other_info))
 
