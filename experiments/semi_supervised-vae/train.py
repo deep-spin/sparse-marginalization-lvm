@@ -95,7 +95,10 @@ class SSVAE(pl.LightningModule):
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = Marginalizer
         elif self.hparams.mode == 'sumsample':
-            classifier_net = SumAndSampleWrapper(classifier_net, topk=self.hparams.topk)
+            classifier_net = SumAndSampleWrapper(
+                classifier_net,
+                topk=self.hparams.topk,
+                baseline_type=self.hparams.baseline_type)
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = SumAndSample
         else:
@@ -411,6 +414,7 @@ def main(params):
         other_info.append("norm-{}".format(opts.normalizer))
     elif opts.mode == 'sumsample':
         other_info.append("k-{}".format(opts.topk))
+        other_info.append("baseline-{}".format(opts.baseline_type))
 
     model_name = '%s/%s' % (model_name, '_'.join(other_info))
 

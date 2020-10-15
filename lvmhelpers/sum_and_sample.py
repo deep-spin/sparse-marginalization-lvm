@@ -52,10 +52,11 @@ def get_concentrated_mask(class_weights, topk):
 class SumAndSampleWrapper(nn.Module):
     """
     """
-    def __init__(self, agent, topk=10):
+    def __init__(self, agent, topk=10, baseline_type=None):
         super(SumAndSampleWrapper, self).__init__()
         self.agent = agent
         self.topk = topk
+        self.baseline_type = baseline_type
 
     def forward(self, *args, **kwargs):
         scores = self.agent(*args, **kwargs)
@@ -123,11 +124,24 @@ class SumAndSample(torch.nn.Module):
                     decoder_output,
                     labels)
 
+                if self.encoder.baseline_type == 'sample':
+                    alt_z_sample = Categorical(logits=encoder_log_prob).sample().detach()
+                    decoder_output = self.decoder(alt_z_sample, decoder_input)
+                    baseline, _ = self.loss(
+                        encoder_input,
+                        alt_z_sample,
+                        decoder_input,
+                        decoder_output,
+                        labels)
+                else:
+                    baseline = 0.
+
                 # get log class probabilities
                 encoder_log_prob_i = encoder_log_prob[seq_tensor, possible_z]
                 # compute gradient estimate
                 grad_estimate_loss = \
-                    loss_sum_term.detach() * encoder_log_prob_i + loss_sum_term
+                    (loss_sum_term.detach() - baseline) * encoder_log_prob_i + \
+                    loss_sum_term
                 # sum
                 summed_weights = encoder_prob[seq_tensor, possible_z].squeeze()
                 summed_term = summed_term + (grad_estimate_loss * summed_weights)
@@ -169,11 +183,24 @@ class SumAndSample(torch.nn.Module):
                     decoder_output,
                     labels)
 
+                if self.encoder.baseline_type == 'sample':
+                    alt_z_sample = Categorical(logits=encoder_log_prob).sample().detach()
+                    decoder_output = self.decoder(alt_z_sample, decoder_input)
+                    baseline, _ = self.loss(
+                        encoder_input,
+                        alt_z_sample,
+                        decoder_input,
+                        decoder_output,
+                        labels)
+                else:
+                    baseline = 0.
+
                 # get log class probabilities
                 encoder_log_prob_i = encoder_log_prob[seq_tensor, conditional_z_sample]
                 # compute gradient estimate
                 grad_estimate_loss_sample = \
-                    loss_sum_term.detach() * encoder_log_prob_i + loss_sum_term
+                    (loss_sum_term.detach() - baseline) * encoder_log_prob_i + \
+                    loss_sum_term
             else:
                 grad_estimate_loss_sample = 0.0
 

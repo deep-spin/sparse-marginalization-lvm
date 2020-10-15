@@ -135,7 +135,8 @@ class SignalGame(pl.LightningModule):
             receiver = DeterministicWrapper(receiver)
             lvm_method = Marginalizer
         elif self.hparams.mode == 'sumsample':
-            sender = SumAndSampleWrapper(sender, topk=self.hparams.topk)
+            sender = SumAndSampleWrapper(
+                sender, topk=self.hparams.topk, baseline_type=self.hparams.baseline_type)
             receiver = DeterministicWrapper(receiver)
             lvm_method = SumAndSample
         else:
@@ -332,6 +333,7 @@ def main(params):
         other_info.append("norm-{}".format(opts.normalizer))
     elif opts.mode == 'sumsample':
         other_info.append("k-{}".format(opts.topk))
+        other_info.append("baseline-{}".format(opts.baseline_type))
 
     model_name = '%s/%s' % (model_name, '_'.join(other_info))
 
