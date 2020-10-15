@@ -409,6 +409,8 @@ def main(params):
         other_info.append("k-{}".format(opts.vimco_k))
     elif opts.mode == "marg":
         other_info.append("norm-{}".format(opts.normalizer))
+    elif opts.mode == 'sumsample':
+        other_info.append("k-{}".format(opts.topk))
 
     model_name = '%s/%s' % (model_name, '_'.join(other_info))
 

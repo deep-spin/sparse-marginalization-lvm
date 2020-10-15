@@ -88,15 +88,19 @@ class SumAndSample(torch.nn.Module):
             self.encoder(encoder_input)
         batch_size, _ = encoder_scores.shape
 
+        # encoder_log_prob: [batch_size, latent_size]
         encoder_log_prob = torch.log_softmax(encoder_scores, dim=-1)
-
         # entropy component of the final loss, we can
         # compute already but will only use it later on
         entropy_loss = -(encoder_entropy.mean() * self.encoder_entropy_coeff)
 
         if self.training:
+            # encoder_prob: [batch_size, latent_size]
             encoder_prob = torch.softmax(encoder_scores.detach(), dim=-1)
             # this is the indicator C_k
+            # concentrated_mask: [batch_size, latent_size]
+            # topk_domain: [batch_size, self.encoder.topk]
+            # seq_tensor: [batch_size]
             concentrated_mask, topk_domain, seq_tensor = \
                 get_concentrated_mask(encoder_prob, self.encoder.topk)
             concentrated_mask = concentrated_mask.float().detach()
