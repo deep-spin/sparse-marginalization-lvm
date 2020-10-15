@@ -304,6 +304,7 @@ def main(params):
         logger=tb_logger,
         max_steps=opts.batches_per_epoch*opts.n_epochs,
         limit_val_batches=1024/opts.batch_size,
+        limit_test_batches=320000/opts.batch_size,
         val_check_interval=opts.batches_per_epoch,
         weights_save_path='checkpoints/',
         weights_summary='full',
