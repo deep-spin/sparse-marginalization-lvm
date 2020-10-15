@@ -317,7 +317,7 @@ def main(params):
         "lr-{}".format(opts.lr),
     ]
 
-    other_info.append("k-{}".format(opts.entropy_coeff))
+    other_info.append("entrcoeff-{}".format(opts.entropy_coeff))
 
     if opts.mode == "gs":
         if opts.straight_through:
