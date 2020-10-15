@@ -14,7 +14,7 @@ def main(checkpoint_path, hparams_path):
     trainer = pl.Trainer(
         progress_bar_refresh_rate=1,
         weights_summary='full',
-        limit_test_batches=320000/model.hparams.batch_size,
+        limit_test_batches=10000//model.hparams.batch_size,
         gpus=1 if torch.cuda.is_available() else 0,
         deterministic=True)
 
