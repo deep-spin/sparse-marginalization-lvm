@@ -23,6 +23,42 @@ from archs import Sender, Receiver
 from opts import populate_experiment_params
 
 
+class CheckpointEveryNSteps(pl.Callback):
+    """
+    Save a checkpoint every N steps, instead of Lightning's default that checkpoints
+    based on validation loss.
+    """
+
+    def __init__(
+            self,
+            save_step_frequency,
+            prefix="N-Step-Checkpoint",
+            use_modelcheckpoint_filename=False):
+        """
+        Args:
+            save_step_frequency: how often to save in steps
+            prefix: add a prefix to the name, only used if
+                use_modelcheckpoint_filename=False
+            use_modelcheckpoint_filename: just use the ModelCheckpoint callback's
+                default filename, don't use ours.
+        """
+        self.save_step_frequency = save_step_frequency
+        self.prefix = prefix
+        self.use_modelcheckpoint_filename = use_modelcheckpoint_filename
+
+    def on_batch_end(self, trainer: pl.Trainer, _):
+        """ Check if we should save a checkpoint after every train batch """
+        epoch = trainer.current_epoch
+        global_step = trainer.global_step
+        if global_step % self.save_step_frequency == 0:
+            if self.use_modelcheckpoint_filename:
+                filename = trainer.checkpoint_callback.filename
+            else:
+                filename = f"{self.prefix}_epoch={epoch}_global_step={global_step}.ckpt"
+            ckpt_path = os.path.join(trainer.checkpoint_callback.dirpath, filename)
+            trainer.save_checkpoint(ckpt_path)
+
+
 class SignalGame(pl.LightningModule):
     def __init__(
             self,
@@ -302,6 +338,7 @@ def main(params):
     trainer = pl.Trainer(
         progress_bar_refresh_rate=20,
         logger=tb_logger,
+        callbacks=[CheckpointEveryNSteps(opts.batches_per_epoch)],
         max_steps=opts.batches_per_epoch*opts.n_epochs,
         limit_val_batches=1024/opts.batch_size,
         limit_test_batches=10000//opts.batch_size,
