@@ -186,10 +186,9 @@ class SignalGame(pl.LightningModule):
             pin_memory=True)
 
     def val_dataloader(self):
-        # TODO: use specific indexes
         # fixed seed so it's always the same 1024 (32*32) pairs
         data_folder = os.path.join(self.hparams.root, "train/")
-        dataset = ImageNetFeat(root=data_folder)
+        dataset = ImageNetFeat(root=data_folder, train=False)
         return ImagenetLoader(
             dataset,
             batch_size=self.hparams.batch_size,
@@ -201,10 +200,9 @@ class SignalGame(pl.LightningModule):
             pin_memory=True)
 
     def test_dataloader(self):
-        # TODO: use specific indexes
         # fixed seed so it's always the same 1024 (32*32) pairs
-        data_folder = os.path.join(self.hparams.root, "train/")
-        dataset = ImageNetFeat(root=data_folder)
+        data_folder = os.path.join(self.hparams.root, "test/")
+        dataset = ImageNetFeat(root=data_folder, train=False)
         return ImagenetLoader(
             dataset,
             batch_size=self.hparams.batch_size,
@@ -299,12 +297,13 @@ def main(params):
         'logs/',
         name=model_name)
 
+    tb_logger.log_hyperparams(opts, metrics=None)
+
     trainer = pl.Trainer(
         progress_bar_refresh_rate=20,
         logger=tb_logger,
         max_steps=opts.batches_per_epoch*opts.n_epochs,
         limit_val_batches=1024/opts.batch_size,
-        limit_test_batches=1024/opts.batch_size,
         val_check_interval=opts.batches_per_epoch,
         weights_save_path='checkpoints/',
         weights_summary='full',

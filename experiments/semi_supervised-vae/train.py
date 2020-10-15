@@ -414,6 +414,8 @@ def main(params):
         'logs/',
         name=model_name)
 
+    tb_logger.log_hyperparams(opts, metrics=None)
+
     trainer = pl.Trainer(
         progress_bar_refresh_rate=20,
         logger=tb_logger,
