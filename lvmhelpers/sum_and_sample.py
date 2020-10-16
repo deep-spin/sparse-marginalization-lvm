@@ -83,6 +83,8 @@ class SumAndSample(torch.nn.Module):
         self.loss = loss_fun
         self.encoder_entropy_coeff = encoder_entropy_coeff
         self.decoder_entropy_coeff = decoder_entropy_coeff
+        self.mean_baseline = 0.0
+        self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_scores, encoder_entropy = \
@@ -124,7 +126,9 @@ class SumAndSample(torch.nn.Module):
                     decoder_output,
                     labels)
 
-                if self.encoder.baseline_type == 'sample':
+                if self.encoder.baseline_type == 'runavg':
+                    baseline = self.mean_baseline
+                elif self.encoder.baseline_type == 'sample':
                     alt_z_sample = Categorical(logits=encoder_log_prob).sample().detach()
                     decoder_output = self.decoder(alt_z_sample, decoder_input)
                     baseline, _ = self.loss(
@@ -145,6 +149,12 @@ class SumAndSample(torch.nn.Module):
                 # sum
                 summed_weights = encoder_prob[seq_tensor, possible_z].squeeze()
                 summed_term = summed_term + (grad_estimate_loss * summed_weights)
+
+                if self.training and self.encoder.baseline_type == 'runavg':
+                    self.n_points += 1.0
+                    self.mean_baseline += (
+                        loss_sum_term.detach().mean() - self.mean_baseline
+                        ) / self.n_points
 
                 # only compute argmax for training log
                 if ii == 0:
@@ -183,6 +193,8 @@ class SumAndSample(torch.nn.Module):
                     decoder_output,
                     labels)
 
+                if self.encoder.baseline_type == 'runavg':
+                    baseline = self.mean_baseline
                 if self.encoder.baseline_type == 'sample':
                     alt_z_sample = Categorical(logits=encoder_log_prob).sample().detach()
                     decoder_output = self.decoder(alt_z_sample, decoder_input)
@@ -201,6 +213,12 @@ class SumAndSample(torch.nn.Module):
                 grad_estimate_loss_sample = \
                     (loss_sum_term.detach() - baseline) * encoder_log_prob_i + \
                     loss_sum_term
+
+                if self.training and self.encoder.baseline_type == 'runavg':
+                    self.n_points += 1.0
+                    self.mean_baseline += (
+                        loss_sum_term.detach().mean() - self.mean_baseline
+                        ) / self.n_points
             else:
                 grad_estimate_loss_sample = 0.0
 
