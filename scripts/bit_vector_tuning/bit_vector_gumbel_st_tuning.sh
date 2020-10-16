@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for lr in 5e-5 1e-4 5e-4 1e-3 5e-3
+for lr in 0.0005 0.001 0.002
 do
     for decay in 1e-5 1e-4
     do
@@ -14,7 +14,8 @@ do
                 --latent_size 32 \
                 --weight_decay 0. \
                 --temperature_decay $decay \
-                --temperature_update_freq $temp_update
+                --temperature_update_freq $temp_update \
+                --straight_through
 done
 done
 done
