@@ -225,7 +225,7 @@ class SparseMAPMarg(torch.nn.Module):
         logs['loss'] = loss.detach()
         logs['encoder_entropy'] = encoder_entropy.detach()
         logs['support'] = torch.tensor(support).to(torch.float)
-        logs['distr'] = encoder_probs
-        logs['loss_output'] = loss_components
+        logs['distr'] = encoder_probs.detach()
+        logs['loss_output'] = loss_components.detach()
         logs['idxs'] = idxs
         return {'loss': full_loss, 'log': logs}
