@@ -196,7 +196,7 @@ class BitVectorGumbel(torch.nn.Module):
             loss_fun,
             encoder_entropy_coeff=0.0,
             decoder_entropy_coeff=0.0):
-        super(Gumbel, self).__init__()
+        super(BitVectorGumbel, self).__init__()
         self.encoder = encoder
         self.decoder = decoder
         self.loss = loss_fun
