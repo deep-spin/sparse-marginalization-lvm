@@ -16,6 +16,8 @@ from lvmhelpers.sfe import \
     SFEWrapper, SFEDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.nvil import \
     NVILWrapper, NVIL
+from lvmhelpers.vimco import \
+    VIMCOWrapper, VIMCO
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -82,6 +84,10 @@ class SSVAE(pl.LightningModule):
             classifier_net = NVILWrapper(classifier_net, input_size=slen**2)
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = NVIL
+        elif self.hparams.mode == 'vimco':
+            classifier_net = VIMCOWrapper(classifier_net, k=self.hparams.vimco_k)
+            gaussian_vae = DeterministicWrapper(gaussian_vae)
+            lvm_method = VIMCO
         elif self.hparams.mode == 'gs':
             classifier_net = GumbelSoftmaxWrapper(
                 classifier_net,

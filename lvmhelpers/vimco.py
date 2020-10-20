@@ -74,20 +74,16 @@ class VIMCO(torch.nn.Module):
             decoder_input.repeat(
                 K, *torch.ones(len(decoder_input.shape), dtype=torch.long).tolist()
                 ).view(-1, *decoder_input.shape[1:])
-        labels_repeat = \
-            labels.repeat(
-                K, *torch.ones(len(labels.shape), dtype=torch.long).tolist()
-                ).view(-1, *labels.shape[1:])
 
         decoder_output = self.decoder(
             discrete_latent_z.reshape(-1), decoder_input_repeat)
 
         loss, logs = self.loss(
             encoder_input_repeat,
-            encoder_scores.argmax(dim=-1),
+            encoder_scores.argmax(-1),
             decoder_input_repeat,
             decoder_output,
-            labels_repeat)
+            labels)
 
         encoder_categorical_distr = Categorical(logits=encoder_scores)
         encoder_sample_log_probs = \
@@ -117,25 +113,23 @@ class VIMCO(torch.nn.Module):
         # make sure I have a surrogate for the generative gradient only
 
         # [B]
-        #L = (log_p - log_q.detach()).logsumexp(-1) - np.log(K)
-        #gen_grad_surrogate = L
+        # L = (log_p - log_q.detach()).logsumexp(-1) - np.log(K)
+        # gen_grad_surrogate = L
 
         # Proposal gradient surrogate
-        
         # VIMCO surrogate part 2 combines the entropy part and the generative part
-        # [B, K] -> [B] 
+        # [B, K] -> [B]
         vimco_grad_surrogate_part2 = (w.detach() * log_r).sum(-1)
-                
+
         use_log_a = False
-        
+
         if use_log_a:
             # Average log ratio (keeping the kth term out)
-            # [B, K]        
+            # [B, K]
             log_a = (log_r.sum(-1).unsqueeze(-1) - log_r) / (K - 1)
-            
+
             # Here we make b, which is a sample specific baseline, thus
             # with shape [B, K]
-
 
             # Smart trick: make log_r [B,K,1], then make log_a [B,K,K] by
             # placing log_a - log_r in the diagonal, then sum the two
@@ -149,18 +143,21 @@ class VIMCO(torch.nn.Module):
             # dim=-1 would be a mistake, the broadcast above
             # repeats dim=1 along dim=2)
             b = b.logsumexp(dim=1) - np.log(K)
-        else:  # this is inspired by https://github.com/y0ast/VIMCO/blob/master/VIMCO.py#L47 though note that the paper says they do use log_a (and they do use geometric mean to define it, as we do above)
+        else:
+            # this is inspired by https://github.com/y0ast/VIMCO/blob/master/VIMCO.py#L47
+            # though note that the paper says they do use log_a (and they do use
+            # geometric mean to define it, as we do above)
             # [B]
             sample_mean = log_r.logsumexp(-1)
             # [B, K]
             b = logsubexp(sample_mean.unsqueeze(-1), log_r) - np.log(K-1)
-        
+
         # VIMCO surrogate part 1 (the SFE part)
         c = 0.
         # Logarithm of the sample mean (with K samples) which we compute in log space
         # [B, K] -> [B]
         L_hat = log_r.logsumexp(-1) - np.log(K)
-        # [B, K] center L_hat independently per sample 
+        # [B, K] center L_hat independently per sample
         centred_L = (L_hat.unsqueeze(-1) - b - c)
 
         # [B, K]
@@ -172,7 +169,7 @@ class VIMCO(torch.nn.Module):
         # Switch to minimisation mode
         # []
         full_loss = - (
-            vimco_grad_surrogate_part1 + vimco_grad_surrogate_part2 ).mean(dim=0)
+            vimco_grad_surrogate_part1 + vimco_grad_surrogate_part2).mean(dim=0)
 
         for k, v in logs.items():
             if hasattr(v, 'mean'):
