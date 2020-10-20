@@ -12,8 +12,8 @@ from lvmhelpers.sum_and_sample import \
     SumAndSampleWrapper, SumAndSample
 from lvmhelpers.sfe import \
     SFEWrapper, SFEDeterministicWrapper, ScoreFunctionEstimator
-from lvmhelpers.vimco import \
-    VIMCOWrapper, VIMCO
+from lvmhelpers.nvil import \
+    NVILWrapper, NVIL
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -106,7 +106,8 @@ class SignalGame(pl.LightningModule):
             sfe=(
                 self.hparams.mode == 'sfe' or
                 self.hparams.mode == 'marg' or
-                self.hparams.mode == 'sumsample'))
+                self.hparams.mode == 'sumsample' or
+                self.hparams.mode == 'nvil'))
 
         loss_fun = loss_nll
 
@@ -119,10 +120,10 @@ class SignalGame(pl.LightningModule):
             else:
                 receiver = SFEDeterministicWrapper(receiver)
             lvm_method = ScoreFunctionEstimator
-        elif self.hparams.mode == 'vimco':
-            sender = VIMCOWrapper(sender, k=self.hparams.vimco_k)
+        elif self.hparams.mode == 'nvil':
+            sender = NVILWrapper(sender, input_size=feat_size)
             receiver = DeterministicWrapper(receiver)
-            lvm_method = VIMCO
+            lvm_method = NVIL
         elif self.hparams.mode == 'gs':
             sender = GumbelSoftmaxWrapper(
                 sender,
