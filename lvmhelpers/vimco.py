@@ -4,6 +4,10 @@ import torch.nn as nn
 from torch.distributions import Categorical, Bernoulli
 
 
+def logsubexp(A, B, epsilon=1e-6):
+    return A + torch.log(1 - torch.clamp(torch.exp(B - A), epsilon, 1-epsilon))
+
+
 class VIMCOWrapper(nn.Module):
     """
     VIMCO Wrapper for an agent. Assumes that the during the forward,
@@ -122,26 +126,35 @@ class VIMCO(torch.nn.Module):
         # [B, K] -> [B] 
         vimco_grad_surrogate_part2 = (w.detach() * log_r).sum(-1)
                 
-        # Average log ratio (keeping the kth term out)
-        # [B, K]
-        log_a = (log_r.sum(-1).unsqueeze(-1) - log_r) / (K - 1)
+        use_log_a = False
+        
+        if use_log_a:
+            # Average log ratio (keeping the kth term out)
+            # [B, K]        
+            log_a = (log_r.sum(-1).unsqueeze(-1) - log_r) / (K - 1)
+            
+            # Here we make b, which is a sample specific baseline, thus
+            # with shape [B, K]
 
-        # Here we make b, which is a sample specific baseline, thus
-        # with shape [B, K]
 
-        # Smart trick: make log_r [B,K,1], then make log_a [B,K,K] by
-        # placing log_a - log_r in the diagonal, then sum the two
-        # things, we end up with [B,K,K] where in the diagonal we have
-        # log_a (the k-exclusive combination)
-        # [B, K, K]
-        # note how log_r and -log_r cancel out in the diagonal :)
-        b = log_r.unsqueeze(-1) + torch.diag_embed(log_a - log_r)
-        # [B, K]
-        # remember to reduce dim 1 (doing a logsumexp on
-        # dim=-1 would be a mistake, the broadcast above
-        # repeats dim=1 along dim=2)
-        b = b.logsumexp(dim=1) - np.log(K)
-
+            # Smart trick: make log_r [B,K,1], then make log_a [B,K,K] by
+            # placing log_a - log_r in the diagonal, then sum the two
+            # things, we end up with [B,K,K] where in the diagonal we have
+            # log_a (the k-exclusive combination)
+            # [B, K, K]
+            # note how log_r and -log_r cancel out in the diagonal :)
+            b = log_r.unsqueeze(-1) + torch.diag_embed(log_a - log_r)
+            # [B, K]
+            # remember to reduce dim 1 (doing a logsumexp on
+            # dim=-1 would be a mistake, the broadcast above
+            # repeats dim=1 along dim=2)
+            b = b.logsumexp(dim=1) - np.log(K)
+        else:  # this is inspired by https://github.com/y0ast/VIMCO/blob/master/VIMCO.py#L47 though note that the paper says they do use log_a (and they do use geometric mean to define it, as we do above)
+            # [B]
+            sample_mean = log_r.logsumexp(-1)
+            # [B, K]
+            b = logsubexp(sample_mean.unsqueeze(-1), log_r) - np.log(K-1)
+        
         # VIMCO surrogate part 1 (the SFE part)
         c = 0.
         # Logarithm of the sample mean (with K samples) which we compute in log space
