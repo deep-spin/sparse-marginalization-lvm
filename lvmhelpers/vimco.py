@@ -97,17 +97,13 @@ class VIMCO(torch.nn.Module):
         log_q = encoder_sample_log_probs.transpose(0, 1)
         log_r = log_p - log_q
 
-        # Log importance weights: log w
-        # (all computed in log space)
-        # [B, K]
-        log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
-
-        # normalized log importance weights: log w
+        # Normalized log importance weights: log w
         # (all computed in log space)
         # [B, K]
         log_w = log_r - log_r.logsumexp(-1).unsqueeze(-1)
 
         # Importance weights: w
+        # [B, K]
         w = log_w.exp()
 
         # Generative gradient surrogate ​ # The learning signal (L)
@@ -117,20 +113,15 @@ class VIMCO(torch.nn.Module):
         # make sure I have a surrogate for the generative gradient only
 
         # [B]
-        L = (log_p - log_q.detach()).logsumexp(-1) - np.log(K)
-        gen_grad_surrogate = L
+        #L = (log_p - log_q.detach()).logsumexp(-1) - np.log(K)
+        #gen_grad_surrogate = L
 
         # Proposal gradient surrogate
-
-        # part 2 (the entropy part)
-        # [B]
-        inf_grad_surrogate_entropy = (- w.detach() * log_q).sum(-1)
-
-        # part 1 (the SFE-looking part)
-        # I will assume the original paper used c = 0
-        # []
-        c = 0.
-
+        
+        # VIMCO surrogate part 2 combines the entropy part and the generative part
+        # [B, K] -> [B] 
+        vimco_grad_surrogate_part2 = (w.detach() * log_r).sum(-1)
+                
         # Average log ratio (keeping the kth term out)
         # [B, K]
         log_a = (log_r.sum(-1).unsqueeze(-1) - log_r) / (K - 1)
@@ -151,20 +142,24 @@ class VIMCO(torch.nn.Module):
         # repeats dim=1 along dim=2)
         b = b.logsumexp(dim=1) - np.log(K)
 
-        # [B, K]
-        centred_L = (L.unsqueeze(-1) - b - c)
+        # VIMCO surrogate part 1 (the SFE part)
+        c = 0.
+        # Logarithm of the sample mean (with K samples) which we compute in log space
+        # [B, K] -> [B]
+        L_hat = log_r.logsumexp(-1) - np.log(K)
+        # [B, K] center L_hat independently per sample 
+        centred_L = (L_hat.unsqueeze(-1) - b - c)
 
-        inf_grad_surrogate_sfe = centred_L.detach() * log_q
+        # [B, K]
+        vimco_grad_surrogate_part1 = centred_L.detach() * log_q
         # [B]
-        inf_grad_surrogate_sfe = inf_grad_surrogate_sfe.sum(-1)
+        vimco_grad_surrogate_part1 = vimco_grad_surrogate_part1.sum(-1)
 
         # sfe surrogate
         # Switch to minimisation mode
         # []
         full_loss = - (
-            gen_grad_surrogate +
-            inf_grad_surrogate_entropy * self.encoder_entropy_coeff +
-            inf_grad_surrogate_sfe).mean(dim=0)
+            vimco_grad_surrogate_part1 + vimco_grad_surrogate_part2 ).mean(dim=0)
 
         for k, v in logs.items():
             if hasattr(v, 'mean'):
