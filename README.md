@@ -24,9 +24,9 @@ This code was tested on `Python 3.7.1`. To install, follow these steps:
 5. Install the requirements: `pip install -r requirements.txt`
 6. Install the `lvm-helpers` package: `pip install .` (or in editable mode if you want to make changes: `pip install -e .`)
 
-## Preparing dataset
+## Datasets
 
-
+MNIST and FMNIST should be downloaded automatically by running the training commands for the first time on the semi-supervised VAE and the bit-vector VAE experiments, respectively. To get the dataset for the emergent communication game, plese visit: https://github.com/DianeBouchacourt/SignalingGame. After getting the data, store the `train` and `test` folders under `data/signal-game` of this repository.
 
 ## Running
 
