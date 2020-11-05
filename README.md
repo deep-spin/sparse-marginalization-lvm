@@ -52,4 +52,4 @@ The evaluation results should match the paper.
 
 This work was partly funded by the European Research Council (ERC StG DeepSPIN 758969), by the P2020 project MAIA (contract 045909), and by the Fundação para a Ciência e Tecnologia through contract UIDB/50008/2020. This work also received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement 825299 (GoURMET).
 
-The code in this repository was largely inspired by the structure and implementations found in [EGG](https://github.com/facebookresearch/EGG), which is licensed under the MIT license.
+The code in this repository was largely inspired by the structure and implementations found in [EGG](https://github.com/facebookresearch/EGG) and was built upon it. EGG is licensed under the MIT license.
