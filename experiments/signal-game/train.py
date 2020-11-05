@@ -199,6 +199,20 @@ class SignalGame(pl.LightningModule):
         result.log('test_loss', test_result['log']['loss'])
         result.log('test_acc', test_result['log']['acc'])
 
+        argmax_sample = test_result['log']['distr'].argmax(dim=-1)
+        z_one_hot = \
+            torch.zeros(
+                len(argmax_sample),
+                test_result['log']['distr'].size(-1)).to(argmax_sample.device)
+        z_one_hot.scatter_(1, argmax_sample.view(-1, 1), 1)
+        z_one_hot = z_one_hot.view(
+            len(argmax_sample), test_result['log']['distr'].size(-1))
+
+        if not hasattr(self, 'usage'):
+            self.usage = z_one_hot.sum(dim=0).cpu().numpy()
+        else:
+            self.usage += z_one_hot.sum(dim=0).cpu().numpy()
+
         if 'support' in test_result['log'].keys():
             result.log(
                 'test_support',

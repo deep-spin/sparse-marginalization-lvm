@@ -66,8 +66,6 @@ class NVIL(torch.nn.Module):
         self.loss = loss_fun
         self.encoder_entropy_coeff = encoder_entropy_coeff
         self.decoder_entropy_coeff = decoder_entropy_coeff
-        self.mean_baseline = 0.0
-        self.n_points = 0.0
 
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_scores, encoder_entropy = \

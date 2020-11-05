@@ -147,6 +147,7 @@ class ScoreFunctionEstimator(torch.nn.Module):
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
         logs['decoder_entropy'] = decoder_entropy.mean()
+        logs['distr'] = encoder_categorical_helper.probs
 
         return {'loss': full_loss, 'log': logs}
 

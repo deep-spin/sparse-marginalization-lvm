@@ -107,7 +107,7 @@ class Marginalizer(torch.nn.Module):
         logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
-        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
         # TODO: nonzero for every epoch end
         logs['support'] = (encoder_probs != 0).sum(-1).to(torch.float).mean()
+        logs['distr'] = encoder_probs
         return {'loss': full_loss, 'log': logs}
