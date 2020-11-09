@@ -16,8 +16,6 @@ from lvmhelpers.sfe import \
     SFEWrapper, SFEDeterministicWrapper, ScoreFunctionEstimator
 from lvmhelpers.nvil import \
     NVILWrapper, NVIL
-from lvmhelpers.vimco import \
-    VIMCOWrapper, VIMCO
 from lvmhelpers.gumbel import \
     GumbelSoftmaxWrapper, Gumbel
 from lvmhelpers.utils import DeterministicWrapper, populate_common_params
@@ -43,7 +41,6 @@ class SSVAE(pl.LightningModule):
             temperature_update_freq,
             straight_through,
             baseline_type,
-            vimco_k,
             topk,
             random_seed,
             batch_size,
@@ -84,10 +81,6 @@ class SSVAE(pl.LightningModule):
             classifier_net = NVILWrapper(classifier_net, input_size=slen**2)
             gaussian_vae = DeterministicWrapper(gaussian_vae)
             lvm_method = NVIL
-        elif self.hparams.mode == 'vimco':
-            classifier_net = VIMCOWrapper(classifier_net, k=self.hparams.vimco_k)
-            gaussian_vae = DeterministicWrapper(gaussian_vae)
-            lvm_method = VIMCO
         elif self.hparams.mode == 'gs':
             classifier_net = GumbelSoftmaxWrapper(
                 classifier_net,
@@ -350,7 +343,6 @@ def get_model(opt):
         temperature_update_freq=opt.temperature_update_freq,
         straight_through=opt.straight_through,
         baseline_type=opt.baseline_type,
-        vimco_k=opt.vimco_k,
         topk=opt.topk,
         random_seed=opt.random_seed,
         batch_size=opt.batch_size,
@@ -374,7 +366,6 @@ def get_model(opt):
             temperature_update_freq=opt.temperature_update_freq,
             straight_through=opt.straight_through,
             baseline_type=opt.baseline_type,
-            vimco_k=opt.vimco_k,
             topk=opt.topk,
             random_seed=opt.random_seed,
             batch_size=opt.batch_size,
@@ -414,8 +405,6 @@ def main(params):
         other_info.append("updatefreq-{}".format(opts.temperature_update_freq))
     elif opts.mode == 'sfe':
         other_info.append("baseline-{}".format(opts.baseline_type))
-    elif opts.mode == 'vimco':
-        other_info.append("k-{}".format(opts.vimco_k))
     elif opts.mode == "marg":
         other_info.append("norm-{}".format(opts.normalizer))
     elif opts.mode == 'sumsample':

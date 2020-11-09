@@ -43,7 +43,6 @@ class VAE(pl.LightningModule):
             temperature_update_freq,
             straight_through,
             baseline_type,
-            vimco_k,
             topk,
             random_seed,
             batch_size,
@@ -394,7 +393,6 @@ def get_model(opt):
         temperature_update_freq=opt.temperature_update_freq,
         straight_through=opt.straight_through,
         baseline_type=opt.baseline_type,
-        vimco_k=opt.vimco_k,
         topk=opt.topk,
         random_seed=opt.random_seed,
         batch_size=opt.batch_size,
@@ -439,8 +437,6 @@ def main(params):
         other_info.append("updatefreq-{}".format(opts.temperature_update_freq))
     elif opts.mode == 'sfe':
         other_info.append("baseline-{}".format(opts.baseline_type))
-    elif opts.mode == 'vimco':
-        other_info.append("k-{}".format(opts.vimco_k))
     elif opts.mode == "topksparse":
         other_info.append("k-{}".format(opts.topksparse))
 
