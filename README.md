@@ -32,19 +32,85 @@ MNIST and FMNIST should be downloaded automatically by running the training comm
 
 **Training**:
 
-To train a network, run:
+To get a warm start for the semi-supervised VAE experiment (use `softmax` normalizer for all experiments that do not use sparsemax):
 
 ```
-python 
+python  experiments/semi_supervised-vae/train.py \
+    --n_epochs 100 \
+    --lr 1e-3 \
+    --labeled_only \
+    --normalizer sparsemax \
+    --batch_size 64
+```
+
+To train with sparsemax on the semi-supervised VAE experiment (after getting a warm start checkpoint):
+
+```
+python experiments/semi_supervised-vae/train.py \
+    --mode marg \
+    --normalizer sparsemax \
+    --random_seed 42 \
+    --lr 5e-4 \
+    --batch_size 64 \
+    --n_epochs 200 \
+    --latent_size 10 \
+    --warm_start_path /path/to/warm_start/
+```
+
+To train with sparsemax on the emergent communication experiment:
+
+```
+python experiments/signal-game/train.py \
+    --mode marg \
+    --normalizer sparsemax \
+    --lr 0.005 \
+    --entropy_coeff 0.1 \
+    --batch_size 64 \
+    --n_epochs 500 \
+    --game_size 16 \
+    --latent_size 256 \
+    --embedding_size 256 \
+    --hidden_size 512 \
+    --weight_decay 0. \
+    --random_seed 42
+done
+```
+
+To train with SparseMAP, on the bit-vector VAE experiment, on 32 bits:
+
+```
+python experiments/bit_vector-vae/train.py \
+    --mode sparsemap \
+    --lr 0.002 \
+    --batch_size 64 \
+    --n_epochs 100 \
+    --latent_size 32 \
+    --weight_decay 0. \
+    --random_seed 42
+```
+
+To train with top-k sparsemax, on the bit-vector VAE experiment, on 32 bits:
+
+```
+python experiments/bit_vector-vae/train.py \
+    --mode topksparse \
+    --lr 0.002 \
+    --batch_size 64 \
+    --n_epochs 100 \
+    --latent_size 32 \
+    --weight_decay 0. \
+    --random_seed 42
 ```
 
 **Evaluating**:
 
-To evaluate a trained network against one of the test sets, run:
+To evaluate any trained network against one of the test sets, run:
 
 ```
-python 
+python experiments/semi_supervised-vae/test.py /path/to/checkpoint/ /path/to/hparams.yaml
 ```
+
+Replace `semi_supervised-vae` by `signal-game` or `bit_vector-vae` to get test results in a different experiment. Checkpoints should be found in the appropriate folder inside the automatically generated `checkpoints` directory, and the `yaml` file should be found in the model's automatically generated directory inside `logs`.
 
 The evaluation results should match the paper.
 
@@ -52,4 +118,4 @@ The evaluation results should match the paper.
 
 This work was partly funded by the European Research Council (ERC StG DeepSPIN 758969), by the P2020 project MAIA (contract 045909), and by the Fundação para a Ciência e Tecnologia through contract UIDB/50008/2020. This work also received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement 825299 (GoURMET).
 
-The code in this repository was largely inspired by the structure and implementations found in [EGG](https://github.com/facebookresearch/EGG) and was built upon it. EGG is licensed under the MIT license.
+The code in this repository was largely inspired by the structure and implementations found in [EGG](https://github.com/facebookresearch/EGG) and was built upon it. EGG is copyright (c) Facebook, Inc. and its affiliates.
