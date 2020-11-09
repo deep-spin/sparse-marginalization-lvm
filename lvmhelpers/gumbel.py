@@ -8,8 +8,26 @@ def gumbel_softmax_sample(
         logits: torch.Tensor,
         temperature: float = 1.0,
         straight_through: bool = False):
+    """Samples from a Gumbel-Sotmax/Concrete of a Categorical distribution.
+    More details in:
+    - Gumbel-Softmax: https://arxiv.org/abs/1611.01144
+    - Concrete distribution: https://arxiv.org/abs/1611.00712
 
-    size = logits.size()
+    Arguments:
+        logits {torch.Tensor} -- tensor of logits, the output of an inference network.
+            Size: [batch_size, n_categories]
+
+    Keyword Arguments:
+        temperature {float} -- temperature of the softmax relaxation. The lower the
+            temperature (-->0), the closer the sample is to a discrete sample.
+            (default: {1.0})
+        straight_through {bool} -- Whether to use the straight-through estimator.
+            (default: {False})
+
+    Returns:
+        torch.Tensor -- the relaxed sample.
+            Size: [batch_size, n_categories]
+    """
 
     sample = RelaxedOneHotCategorical(
         logits=logits, temperature=temperature).rsample()
@@ -29,6 +47,26 @@ def gumbel_softmax_bit_vector_sample(
         logits: torch.Tensor,
         temperature: float = 1.0,
         straight_through: bool = False):
+    """Samples from a Gumbel-Sotmax/Concrete of independent Bernoulli distributions.
+    More details in:
+    - Gumbel-Softmax: https://arxiv.org/abs/1611.01144
+    - Concrete distribution: https://arxiv.org/abs/1611.00712
+
+    Arguments:
+        logits {torch.Tensor} -- tensor of logits, the output of an inference network.
+            Size: [batch_size, n_bits]
+
+    Keyword Arguments:
+        temperature {float} -- temperature of the softmax relaxation. The lower the
+            temperature (-->0), the closer the sample is to discrete samples.
+            (default: {1.0})
+        straight_through {bool} -- Whether to use the straight-through estimator.
+            (default: {False})
+
+    Returns:
+        torch.Tensor -- the relaxed sample.
+            Size: [batch_size, n_bits]
+    """
 
     sample = RelaxedBernoulli(
         logits=logits, temperature=temperature).rsample()
@@ -42,24 +80,10 @@ def gumbel_softmax_bit_vector_sample(
 
 class GumbelSoftmaxWrapper(nn.Module):
     """
-    Gumbel-Softmax Wrapper for an agent that outputs a single symbol.
+    Gumbel-Softmax Wrapper for a network that parameterizes a Categorical distribution.
     Assumes that during the forward pass,
-    the agent returns log-probabilities over the potential output symbols.
-    During training, the wrapper
-    transforms them into a sample from the Gumbel Softmax (GS) distribution;
-    eval-time it returns greedy one-hot encoding
-    of the same shape.
-
-    >>> inp = torch.zeros((4, 10)).uniform_()
-    >>> outp = GumbelSoftmaxWrapper(nn.Linear(10, 2))(inp)
-    >>> torch.allclose(outp.sum(dim=-1), torch.ones_like(outp.sum(dim=-1)))
-    True
-    >>> outp = GumbelSoftmaxWrapper(nn.Linear(10, 2), straight_through=True)(inp)
-    >>> torch.allclose(outp.sum(dim=-1), torch.ones_like(outp.sum(dim=-1)))
-    True
-    >>> (max_value, _), (min_value, _) = outp.max(dim=-1), outp.min(dim=-1)
-    >>> (max_value == 1.0).all().item() == 1 and (min_value == 0.0).all().item() == 1
-    True
+    the network returns scores over the potential output categories.
+    The wrapper transforms them into a sample from the Gumbel-Softmax (GS) distribution.
     """
 
     def __init__(self,
@@ -68,12 +92,17 @@ class GumbelSoftmaxWrapper(nn.Module):
                  trainable_temperature=False,
                  straight_through=False):
         """
-        :param agent: The agent to be wrapped. agent.forward() has to output
-            log-probabilities over the vocabulary
-        :param temperature: The temperature of the Gumbel Softmax distribution
-        :param trainable_temperature: If set to True, the temperature becomes
-            a trainable parameter of the model
-        :params straight_through: Whether straigh-through Gumbel Softmax is used
+        Arguments:
+            agent -- The agent to be wrapped. agent.forward() has to output
+                scores over the categories
+
+        Keyword Arguments:
+            temperature {float} -- The temperature of the Gumbel-Softmax distribution
+                (default: {1.0})
+            trainable_temperature {bool} -- If set to True, the temperature becomes
+                a trainable parameter of the model (default: {False})
+            straight_through {bool} -- Whether straigh-through Gumbel-Softmax is used
+                (default: {False})
         """
         super(GumbelSoftmaxWrapper, self).__init__()
         self.agent = agent
@@ -87,6 +116,19 @@ class GumbelSoftmaxWrapper(nn.Module):
         self.distr_type = Categorical
 
     def forward(self, *args, **kwargs):
+        """Forward pass.
+
+        Returns:
+            sample {torch.Tensor} -- Gumbel-Softmax relaxed sample.
+                Size: [batch_size, n_categories]
+            scores {torch.Tensor} -- the output of the network.
+                Can be useful for logging purposes.
+                Size: [batch_size, n_categories]
+            entropy {torch.Tensor} -- the entropy of the distribution.
+                We assume a Categorical to compute this, which is common-practice,
+                but may not be ideal. See appendix in https://arxiv.org/abs/1611.00712
+                Size: [batch_size]
+        """
         scores = self.agent(*args, **kwargs)
         sample = gumbel_softmax_sample(
             scores, self.temperature, self.straight_through)
@@ -95,11 +137,18 @@ class GumbelSoftmaxWrapper(nn.Module):
         return sample, scores, entropy
 
     def update_temperature(
-            self, current_step, temperature_update_freq, temperature_decay):
-        """
-        use this at the end of each training step to anneal the temperature according
+            self,
+            current_step: int,
+            temperature_update_freq: int,
+            temperature_decay: float):
+        """use this at the end of each training step to anneal the temperature according
         to max(0.5, exp(-rt)) with r and t being the decay rate and training step,
         respectively.
+
+        Arguments:
+            current_step {int} -- current global step in the training process
+            temperature_update_freq {int} -- how often to update the temperature
+            temperature_decay {float} -- decay rate r
         """
         if current_step % temperature_update_freq == 0:
             rt = temperature_decay * torch.tensor(current_step)
@@ -108,6 +157,9 @@ class GumbelSoftmaxWrapper(nn.Module):
 
 
 class Gumbel(torch.nn.Module):
+    """
+    The training loop for the Gumbel-Softmax method to train discrete latent variables.
+    """
     def __init__(
             self,
             encoder,
@@ -145,27 +197,37 @@ class Gumbel(torch.nn.Module):
             if hasattr(v, 'mean'):
                 logs[k] = v.mean()
 
-        logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
-        logs['encoder_entropy'] = torch.zeros(1).to(loss.device)
-        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['encoder_entropy'] = encoder_entropy.mean()
         logs['distr'] = self.encoder.distr_type(logits=encoder_scores)
         return {'loss': full_loss, 'log': logs}
 
 
 class BitVectorGumbelSoftmaxWrapper(GumbelSoftmaxWrapper):
+    """
+    Gumbel-Softmax Wrapper for a network that parameterizes
+    independent Bernoulli distributions.
+    Assumes that during the forward pass,
+    the network returns scores for the Bernoulli parameter.
+    The wrapper transforms them into a sample from the Gumbel-Softmax (GS) distribution.
+    """
     def __init__(self,
                  agent,
                  temperature=1.0,
                  trainable_temperature=False,
                  straight_through=False):
         """
-        :param agent: The agent to be wrapped. agent.forward() has to output
-            log-probabilities over the vocabulary
-        :param temperature: The temperature of the Gumbel Softmax distribution
-        :param trainable_temperature: If set to True, the temperature becomes
-            a trainable parameter of the model
-        :params straight_through: Whether straigh-through Gumbel Softmax is used
+        Arguments:
+            agent -- The agent to be wrapped. agent.forward() has to output
+                scores for each Bernoulli
+
+        Keyword Arguments:
+            temperature {float} -- The temperature of the Gumbel-Softmax distribution
+                (default: {1.0})
+            trainable_temperature {bool} -- If set to True, the temperature becomes
+                a trainable parameter of the model (default: {False})
+            straight_through {bool} -- Whether straigh-through Gumbel-Softmax is used
+                (default: {False})
         """
         super(BitVectorGumbelSoftmaxWrapper, self).__init__(
             agent,
@@ -175,6 +237,19 @@ class BitVectorGumbelSoftmaxWrapper(GumbelSoftmaxWrapper):
         self.distr_type = Bernoulli
 
     def forward(self, *args, **kwargs):
+        """Forward pass.
+
+        Returns:
+            sample {torch.Tensor} -- Gumbel-Softmax relaxed sample.
+                Size: [batch_size, n_bits]
+            scores {torch.Tensor} -- the output of the network.
+                Can be useful for logging purposes.
+                Size: [batch_size, n_bits]
+            entropy {torch.Tensor} -- the entropy of the distribution.
+                We assume independent Bernoulli to compute this, which is common-practice,
+                but may not be ideal. See appendix in https://arxiv.org/abs/1611.00712
+                Size: [batch_size]
+        """
         scores = self.agent(*args, **kwargs)
         sample = gumbel_softmax_bit_vector_sample(
             scores, self.temperature, self.straight_through)
@@ -184,6 +259,10 @@ class BitVectorGumbelSoftmaxWrapper(GumbelSoftmaxWrapper):
 
 
 class BitVectorGumbel(torch.nn.Module):
+    """
+    The training loop for the Gumbel-Softmax method to train a
+    bit-vector of independent latent variables.
+    """
     def __init__(
             self,
             encoder,
@@ -221,9 +300,7 @@ class BitVectorGumbel(torch.nn.Module):
             if hasattr(v, 'mean'):
                 logs[k] = v.mean()
 
-        logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
-        logs['encoder_entropy'] = torch.zeros(1).to(loss.device)
-        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['encoder_entropy'] = encoder_entropy.mean()
         logs['distr'] = self.encoder.distr_type(logits=encoder_scores)
         return {'loss': full_loss, 'log': logs}
