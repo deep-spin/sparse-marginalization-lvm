@@ -5,29 +5,36 @@ from torch.distributions import Categorical, Bernoulli
 
 class SFEWrapper(nn.Module):
     """
-    SFE Wrapper for an agent. Assumes that the during the forward,
-    the wrapped agent returns log-probabilities over the potential outputs.
-    During training, the wrapper
-    transforms them into a tuple of (sample from the multinomial,
+    SFE Wrapper for a network. Assumes that the during the forward pass,
+    the network returns scores over the potential output categories.
+    The wrapper transforms them into a tuple of (sample from the multinomial,
     log-prob of the sample, entropy for the multinomial).
-    Eval-time the sample is replaced with argmax.
-
-    >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
-    >>> agent = SFEWrapper(agent)
-    >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
-    >>> sample.size()
-    torch.Size([4])
-    >>> (log_prob < 0).all().item()
-    1
-    >>> (entropy > 0).all().item()
-    1
     """
     def __init__(self, agent, baseline_type):
+        """
+        Arguments:
+            agent -- The agent to be wrapped. agent.forward() has to output
+                scores over the categories
+            baseline_type {str} -- which baseline to use. Either 'runavg'
+                or 'sample'.
+        """
         super(SFEWrapper, self).__init__()
         self.agent = agent
         self.baseline_type = baseline_type
 
     def forward(self, *args, **kwargs):
+        """Forward pass.
+
+        Returns:
+            sample {torch.Tensor} -- SFE sample.
+                Size: [batch_size]
+            scores {torch.Tensor} -- the output of the network.
+                Important to compute the policy component of the SFE loss.
+                Size: [batch_size, n_categories]
+            entropy {torch.Tensor} -- the entropy of the Categorical distribution
+                parameterized by the scores.
+                Size: [batch_size]
+        """
         scores = self.agent(*args, **kwargs)
 
         distr = Categorical(logits=scores)
@@ -41,19 +48,10 @@ class SFEWrapper(nn.Module):
 class SFEDeterministicWrapper(nn.Module):
     """
     Simple wrapper that makes a deterministic agent (without sampling)
-    compatible with SFE-based game, by
+    compatible with SFE-based training, by
     adding zero log-probability and entropy values to the output.
     No sampling is run on top of the wrapped agent,
     it is passed as is.
-    >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
-    >>> agent = SFEDeterministicWrapper(agent)
-    >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
-    >>> sample.size()
-    torch.Size([4, 3])
-    >>> (log_prob == 0).all().item()
-    1
-    >>> (entropy == 0).all().item()
-    1
     """
     def __init__(self, agent):
         super(SFEDeterministicWrapper, self).__init__()
@@ -66,6 +64,10 @@ class SFEDeterministicWrapper(nn.Module):
 
 
 class ScoreFunctionEstimator(torch.nn.Module):
+    """
+    The training loop for the SFE method to train discrete latent variables.
+    Encoder/Decoder needs to be either SFEWrapper or SFEDeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
@@ -85,7 +87,7 @@ class ScoreFunctionEstimator(torch.nn.Module):
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
-        decoder_output, decoder_log_prob, decoder_entropy = \
+        decoder_output, decoder_scores, decoder_entropy = \
             self.decoder(discrete_latent_z, decoder_input)
 
         argmax = encoder_scores.argmax(dim=-1)
@@ -99,11 +101,11 @@ class ScoreFunctionEstimator(torch.nn.Module):
 
         encoder_categorical_helper = Categorical(logits=encoder_scores)
         encoder_sample_log_probs = encoder_categorical_helper.log_prob(discrete_latent_z)
-        if len(decoder_log_prob.size()) != 1:
-            decoder_categorical_helper = Categorical(logits=decoder_log_prob)
+        if len(decoder_scores.size()) != 1:
+            decoder_categorical_helper = Categorical(logits=decoder_scores)
             decoder_sample_log_probs = decoder_categorical_helper.log_prob(decoder_output)
         else:
-            decoder_sample_log_probs = decoder_log_prob
+            decoder_sample_log_probs = decoder_scores
 
         if self.encoder.baseline_type == 'runavg':
             baseline = self.mean_baseline
@@ -149,29 +151,38 @@ class ScoreFunctionEstimator(torch.nn.Module):
 
 class BitVectorSFEWrapper(nn.Module):
     """
-    SFE Wrapper for an agent. Assumes that the during the forward,
-    the wrapped agent returns log-probabilities over the potential outputs.
-    During training, the wrapper
-    transforms them into a tuple of (sample from the multinomial,
-    log-prob of the sample, entropy for the multinomial).
-    Eval-time the sample is replaced with argmax.
-
-    >>> agent = nn.Sequential(nn.Linear(10, 3), nn.LogSoftmax(dim=1))
-    >>> agent = BitVectorSFEWrapper(agent)
-    >>> sample, log_prob, entropy = agent(torch.ones(4, 10))
-    >>> sample.size()
-    torch.Size([4])
-    >>> (log_prob < 0).all().item()
-    1
-    >>> (entropy > 0).all().item()
-    1
+    SFE Wrapper for a network that parameterizes
+    independent Bernoulli distributions.
+    Assumes that the during the forward pass,
+    the network returns scores for the Bernoulli parameters.
+    The wrapper transforms them into a tuple of (sample from the Bernoulli,
+    log-prob of the sample, entropy for the independent Bernoulli).
     """
     def __init__(self, agent, baseline_type):
+        """
+        Arguments:
+            agent -- The agent to be wrapped. agent.forward() has to output
+                scores for each Bernoulli
+            baseline_type {str} -- which baseline to use. Either 'runavg'
+                or 'sample'.
+        """
         super(BitVectorSFEWrapper, self).__init__()
         self.agent = agent
         self.baseline_type = baseline_type
 
     def forward(self, *args, **kwargs):
+        """Forward pass.
+
+        Returns:
+            sample {torch.Tensor} -- SFE sample.
+                Size: [batch_size, n_bits]
+            scores {torch.Tensor} -- the output of the network.
+                Important to compute the policy component of the SFE loss.
+                Size: [batch_size, n_bits]
+            entropy {torch.Tensor} -- the entropy of the independent Bernoulli
+                parameterized by the scores.
+                Size: [batch_size]
+        """
         scores = self.agent(*args, **kwargs)
 
         distr = Bernoulli(logits=scores)
@@ -183,6 +194,11 @@ class BitVectorSFEWrapper(nn.Module):
 
 
 class BitVectorScoreFunctionEstimator(torch.nn.Module):
+    """
+    The training loop for the SFE method to train
+    a bit-vector of independent latent variables.
+    Encoder/Decoder needs to be either BitVectorSFEWrapper or SFEDeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
@@ -202,7 +218,7 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
     def forward(self, encoder_input, decoder_input, labels):
         discrete_latent_z, encoder_scores, encoder_entropy = \
             self.encoder(encoder_input)
-        decoder_output, decoder_log_prob, decoder_entropy = \
+        decoder_output, decoder_scores, decoder_entropy = \
             self.decoder(discrete_latent_z, decoder_input)
 
         argmax = (encoder_scores > 0).to(torch.float)
@@ -217,6 +233,12 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
         encoder_bernoull_distr = Bernoulli(logits=encoder_scores)
         encoder_sample_log_probs = \
             encoder_bernoull_distr.log_prob(discrete_latent_z).sum(dim=1)
+        if len(decoder_scores.size()) != 1:
+            decoder_categorical_helper = Bernoulli(logits=decoder_scores)
+            decoder_sample_log_probs = \
+                decoder_categorical_helper.log_prob(decoder_output).sum(dim=1)
+        else:
+            decoder_sample_log_probs = decoder_scores
 
         if self.encoder.baseline_type == 'runavg':
             baseline = self.mean_baseline
@@ -230,8 +252,14 @@ class BitVectorScoreFunctionEstimator(torch.nn.Module):
                 decoder_output,
                 labels)
 
-        policy_loss = (loss.detach() - baseline) * encoder_sample_log_probs
-        entropy_loss = - encoder_entropy * self.encoder_entropy_coeff
+        policy_loss = (
+            loss.detach() - baseline) * (
+                encoder_sample_log_probs + decoder_sample_log_probs)
+        entropy_loss = -(
+            encoder_entropy *
+            self.encoder_entropy_coeff +
+            decoder_entropy *
+            self.decoder_entropy_coeff)
 
         full_loss = (policy_loss + entropy_loss + loss).mean()
 
