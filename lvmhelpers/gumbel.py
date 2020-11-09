@@ -159,6 +159,8 @@ class GumbelSoftmaxWrapper(nn.Module):
 class Gumbel(torch.nn.Module):
     """
     The training loop for the Gumbel-Softmax method to train discrete latent variables.
+    Encoder needs to be GumbelSoftmaxWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
     """
     def __init__(
             self,
@@ -208,7 +210,7 @@ class BitVectorGumbelSoftmaxWrapper(GumbelSoftmaxWrapper):
     Gumbel-Softmax Wrapper for a network that parameterizes
     independent Bernoulli distributions.
     Assumes that during the forward pass,
-    the network returns scores for the Bernoulli parameter.
+    the network returns scores for the Bernoulli parameters.
     The wrapper transforms them into a sample from the Gumbel-Softmax (GS) distribution.
     """
     def __init__(self,
@@ -262,6 +264,8 @@ class BitVectorGumbel(torch.nn.Module):
     """
     The training loop for the Gumbel-Softmax method to train a
     bit-vector of independent latent variables.
+    Encoder needs to be BitVectorGumbelSoftmaxWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
     """
     def __init__(
             self,
