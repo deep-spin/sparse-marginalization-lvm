@@ -4,8 +4,10 @@ from torch.distributions import Categorical, Bernoulli
 
 
 class BaselineNN(nn.Module):
+    """
+    Neural network that outputs the baseline for NVIL.
+    """
     def __init__(self, input_size):
-        # this is a neural network for the NVIL baseline
         super(BaselineNN, self).__init__()
 
         self.input_size = input_size
@@ -24,12 +26,16 @@ class BaselineNN(nn.Module):
         h = torch.relu(self.fc2(h))
         h = torch.relu(self.fc3(h))
         h = self.fc4(h)
-
+        # h: [batch_size]
         return h
 
 
 class NVILWrapper(nn.Module):
     """
+    NVIL Wrapper for a network. Assumes that the during the forward pass,
+    the network returns scores over the potential output categories.
+    The wrapper transforms them into a tuple of (sample from the Categorical,
+    log-prob of the sample, entropy for the Categorical).
     """
     def __init__(self, agent, input_size):
         super(NVILWrapper, self).__init__()
@@ -37,6 +43,18 @@ class NVILWrapper(nn.Module):
         self.baseline_nn = BaselineNN(input_size)
 
     def forward(self, *args, **kwargs):
+        """Forward pass.
+
+        Returns:
+            sample {torch.Tensor} -- Categorical sample.
+                Size: [batch_size]
+            scores {torch.Tensor} -- the output of the network.
+                Important to compute the policy component of the loss.
+                Size: [batch_size, n_categories]
+            entropy {torch.Tensor} -- the entropy of the Categorical distribution
+                parameterized by the scores.
+                Size: [batch_size]
+        """
         scores = self.agent(*args, **kwargs)
 
         distr = Categorical(logits=scores)
@@ -48,6 +66,11 @@ class NVILWrapper(nn.Module):
 
 
 class NVIL(torch.nn.Module):
+    """
+    The training loop for the NVIL method to train discrete latent variables.
+    Encoder needs to be NVILWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
@@ -97,12 +120,19 @@ class NVIL(torch.nn.Module):
         logs['baseline'] = baseline
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
+        logs['distr'] = encoder_categorical_helper.probs
 
         return {'loss': full_loss, 'log': logs}
 
 
 class BitVectorNVILWrapper(nn.Module):
     """
+    NVIL Wrapper for a network that parameterizes
+    independent Bernoulli distributions.
+    Assumes that the during the forward pass,
+    the network returns scores for the Bernoulli parameters.
+    The wrapper transforms them into a tuple of (sample from the Bernoulli,
+    log-prob of the sample, entropy for the independent Bernoulli).
     """
     def __init__(self, agent, input_size):
         super(BitVectorNVILWrapper, self).__init__()
@@ -121,6 +151,12 @@ class BitVectorNVILWrapper(nn.Module):
 
 
 class BitVectorNVIL(torch.nn.Module):
+    """
+    The training loop for the NVIL method to train
+    a bit-vector of independent latent variables.
+    Encoder needs to be BitVectorNVILWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,

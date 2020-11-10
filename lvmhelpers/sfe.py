@@ -7,8 +7,8 @@ class SFEWrapper(nn.Module):
     """
     SFE Wrapper for a network. Assumes that the during the forward pass,
     the network returns scores over the potential output categories.
-    The wrapper transforms them into a tuple of (sample from the multinomial,
-    log-prob of the sample, entropy for the multinomial).
+    The wrapper transforms them into a tuple of (sample from the Categorical,
+    log-prob of the sample, entropy for the Categorical).
     """
     def __init__(self, agent, baseline_type):
         """
