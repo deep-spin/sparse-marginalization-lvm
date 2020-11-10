@@ -51,6 +51,12 @@ def get_concentrated_mask(class_weights, topk):
 
 class SumAndSampleWrapper(nn.Module):
     """
+    Sum&Sample Wrapper for a network. Assumes that the during the forward pass,
+    the network returns scores over the potential output categories.
+    The wrapper transforms them into a tuple of (sample from the Categorical,
+    log-prob of the sample, entropy for the Categorical).
+
+    See: https://arxiv.org/abs/1810.04777
     """
     def __init__(self, agent, topk=10, baseline_type=None):
         super(SumAndSampleWrapper, self).__init__()
@@ -70,6 +76,11 @@ class SumAndSampleWrapper(nn.Module):
 
 
 class SumAndSample(torch.nn.Module):
+    """
+    The training loop for the Sum&Sample method to train discrete latent variables.
+    Encoder needs to be SumAndSampleWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
@@ -245,8 +256,8 @@ class SumAndSample(torch.nn.Module):
 
         full_loss = loss.mean() + entropy_loss
 
-        logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = map_loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
-        logs['decoder_entropy'] = torch.zeros(1).to(loss.device)
+        logs['distr'] = encoder_prob
+
         return {'loss': full_loss, 'log': logs}
