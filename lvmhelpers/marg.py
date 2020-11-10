@@ -3,7 +3,18 @@ import torch.nn as nn
 from entmax import entmax15, sparsemax
 
 
-def entropy(p):
+def entropy(p: torch.Tensor):
+    """Numerically stable computation of Shannon's entropy
+    for probability distributions with zero-valued elements.
+
+    Arguments:
+        p {torch.Tensor} -- tensor of probabilities.
+            Size: [batch_size, n_categories]
+
+    Returns:
+        {torch.Tensor} -- the entropy of p.
+            Size: [batch_size]
+    """
     nz = (p > 0).to(p.device)
 
     eps = torch.finfo(p.dtype).eps
@@ -19,6 +30,11 @@ def entropy(p):
 
 class ExplicitWrapper(nn.Module):
     """
+    Explicit Marginalization Wrapper for a network.
+    Assumes that the during the forward pass,
+    the network returns scores over the potential output categories.
+    The wrapper transforms them into a tuple of (sample from the Categorical,
+    log-prob of the sample, entropy for the Categorical).
     """
     def __init__(self, agent, normalizer='entmax'):
         super(ExplicitWrapper, self).__init__()
@@ -39,6 +55,11 @@ class ExplicitWrapper(nn.Module):
 
 
 class Marginalizer(torch.nn.Module):
+    """
+    The training loop for the marginalization method to train discrete latent variables.
+    Encoder needs to be ExplicitWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
@@ -104,10 +125,8 @@ class Marginalizer(torch.nn.Module):
         loss = encoder_probs.unsqueeze(1).bmm(losses.unsqueeze(-1)).squeeze()
         full_loss = loss.mean() + entropy_loss.mean()
 
-        logs['baseline'] = torch.zeros(1).to(loss.device)
         logs['loss'] = loss.mean()
         logs['encoder_entropy'] = encoder_entropy.mean()
-        # TODO: nonzero for every epoch end
         logs['support'] = (encoder_probs != 0).sum(-1).to(torch.float).mean()
         logs['distr'] = encoder_probs
         return {'loss': full_loss, 'log': logs}
