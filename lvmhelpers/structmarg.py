@@ -22,6 +22,12 @@ def entropy(p):
 
 class TopKSparsemaxWrapper(nn.Module):
     """
+    Top-k sparsemax Wrapper for a network that parameterizes
+    independent Bernoulli distributions.
+    Assumes that the during the forward pass,
+    the network returns scores for the Bernoulli parameters.
+    The wrapper transforms them into a tuple of (sample from the Bernoulli,
+    log-prob of the sample, entropy for the independent Bernoulli).
     """
     def __init__(self, agent, k=10):
         super(TopKSparsemaxWrapper, self).__init__()
@@ -53,6 +59,12 @@ class TopKSparsemaxWrapper(nn.Module):
 
 
 class TopKSparsemaxMarg(torch.nn.Module):
+    """
+    The training loop for the Top-k sparsemax method to train
+    a bit-vector of independent latent variables.
+    Encoder needs to be TopKSparsemaxWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
@@ -143,6 +155,12 @@ class TopKSparsemaxMarg(torch.nn.Module):
 
 class SparseMAPWrapper(nn.Module):
     """
+    SparseMAP Wrapper for a network that parameterizes
+    independent Bernoulli distributions.
+    Assumes that the during the forward pass,
+    the network returns scores for the Bernoulli parameters.
+    The wrapper transforms them into a tuple of (sample from the Bernoulli,
+    log-prob of the sample, entropy for the independent Bernoulli).
     """
     def __init__(self, agent, budget=0, init=False, max_iter=300):
         super(SparseMAPWrapper, self).__init__()
@@ -185,6 +203,12 @@ class SparseMAPWrapper(nn.Module):
 
 
 class SparseMAPMarg(torch.nn.Module):
+    """
+    The training loop for the SparseMAP marginalization method to train
+    a bit-vector of independent latent variables.
+    Encoder needs to be SparseMAPWrapper.
+    Decoder needs to be utils.DeterministicWrapper.
+    """
     def __init__(
             self,
             encoder,
