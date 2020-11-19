@@ -114,6 +114,20 @@ Replace `semi_supervised-vae` by `signal-game` or `bit_vector-vae` to get test r
 
 The evaluation results should match the paper.
 
+## Citing
+
+If you use this codebase in your work, please cite:
+
+```
+@inproceedings{correia2020efficientmarg,
+  title = {Efficient {{Marginalization}} of {{Discrete}} and {{Structured Latent Variables}} via {{Sparsity}}},
+  booktitle = {Proc. {{NeurIPS}}},
+  author = {Correia, Gon{\c c}alo M. and Niculae, Vlad and Aziz, Wilker and Martins, Andr{\'e} F. T.},
+  year = {2020},
+  url = {http://arxiv.org/abs/2007.01919}
+}
+```
+
 ## Acknowledgements
 
 This work was partly funded by the European Research Council (ERC StG DeepSPIN 758969), by the P2020 project MAIA (contract 045909), and by the Fundação para a Ciência e Tecnologia through contract UIDB/50008/2020. This work also received funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement 825299 (GoURMET).
